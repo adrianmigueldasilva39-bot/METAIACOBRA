@@ -1,13 +1,13 @@
 #include "game.h"
-#include <stdio.h>
-#include <stdlib.h>
 #include <sysutil/sysutil.h>
+#include <sys/process.h>
+#include <cstdio>
 
-static void sysutilExitCallback(uint64_t status, uint64_t param, void* userdata) {
+static void sysutilExitCallback(u64 status, u64 param, void* userdata) {
     (void)param;
     (void)userdata;
     if (status == SYSUTIL_EXIT_GAME) {
-        exit(0);
+        sysProcessExit(0);
     }
 }
 
@@ -17,10 +17,12 @@ int main(int argc, char* argv[]) {
     sysUtilRegisterCallback(0, sysutilExitCallback, NULL);
     Game game;
     if (!game.init()) {
-        printf("Erro ao iniciar o jogo!\n");
-        return 1;
+        game.shutdown();
+        sysProcessExit(0);
+        return 0;
     }
     game.run();
     game.shutdown();
+    sysProcessExit(0);
     return 0;
 }
