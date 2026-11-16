@@ -6,16 +6,12 @@
 #include <string.h>
 #include <math.h>
 
-// Garante que o body tenha pelo menos 'length' segmentos.
-// Quando a cobra cresce, o length aumenta mas o body não, e isso fazia
-// o código acessar posições inexistentes e travar o PS3.
 static void ensureBody(Snake &s) {
     while ((int)s.body.size() < (int)s.length) {
         s.body.push_back(s.body.empty() ? Vec2(0, 0) : s.body.back());
     }
 }
 
-// ===== CONSTRUTOR / DESTRUTOR =====
 Game::Game() {
     screen = NULL;
     running = false;
@@ -61,22 +57,18 @@ void Game::shutdown() {
     screen = NULL;
 }
 
-// ===== MUNDO =====
 void Game::initWorld() {
     for (int i = 0; i < MAX_SNAKES; i++) {
         snakes[i].alive = false;
         snakes[i].path.clear();
         snakes[i].body.clear();
     }
-    // Player no centro
     spawnSnake(snakes[0], true, 0, 0);
-    // Bots espalhados
     for (int i = 1; i < MAX_SNAKES; i++) {
         float a = ((float)rand() / RAND_MAX) * 6.283f;
         float d = 500 + ((float)rand() / RAND_MAX) * 3000;
         spawnSnake(snakes[i], false, cosf(a) * d, sinf(a) * d);
     }
-    // Comidas
     for (int i = 0; i < MAX_FOOD; i++) {
         spawnFood(i, true);
     }
@@ -178,7 +170,6 @@ void Game::spawnParticle(float x, float y, Uint8 r, Uint8 g, Uint8 b) {
     }
 }
 
-// ===== LOOP PRINCIPAL =====
 void Game::run() {
     padInfo padinfo;
     padData paddata;
@@ -194,7 +185,6 @@ void Game::run() {
 
         sysUtilCheckCallback();
 
-        // Leitura do controle
         float analogX = 0, analogY = 0;
         bool boostBtn = false;
         bool startBtn = false;
@@ -215,9 +205,9 @@ void Game::run() {
             if (paddata.BTN_START) startBtn = true;
         }
 
-        if (gameState == 0) {                       // MENU
+        if (gameState == 0) {
             if (startBtn && !startPressedBefore) gameState = 1;
-        } else if (gameState == 1) {                // JOGANDO
+        } else if (gameState == 1) {
             for (int i = 0; i < MAX_SNAKES; i++) {
                 if (snakes[i].alive) ensureBody(snakes[i]);
             }
@@ -225,7 +215,6 @@ void Game::run() {
             for (int i = 1; i < MAX_SNAKES; i++) {
                 if (snakes[i].alive) updateBot(snakes[i], dt);
             }
-            // Move todas as cobras pelo path
             for (int i = 0; i < MAX_SNAKES; i++) {
                 if (!snakes[i].alive) continue;
                 Snake &s = snakes[i];
@@ -244,7 +233,7 @@ void Game::run() {
             updateCamera(dt);
             checkCollisions();
             if (!snakes[0].alive) gameState = 2;
-        } else if (gameState == 2) {                // GAME OVER
+        } else if (gameState == 2) {
             if (startBtn && !startPressedBefore) resetPlayer();
         }
         startPressedBefore = startBtn;
@@ -252,7 +241,6 @@ void Game::run() {
         render();
         frameCount++;
 
-        // Trava em ~60 FPS
         Uint32 elapsed = SDL_GetTicks() - frameStart;
         if (elapsed < 16) SDL_Delay(16 - elapsed);
     }
@@ -314,7 +302,7 @@ void Game::updatePlayer(Snake &s, float dt, float analogX, float analogY, bool b
 
 void Game::updateBot(Snake &s, float dt) {
     if (!s.alive) return;
-    s.aiTimer -= 1;   // antes era (int)dt, que virava 0 e travava a IA
+    s.aiTimer -= 1;
     Vec2 head = s.body[0];
 
     float dCenter = dist(head.x, head.y, 0, 0);
@@ -339,7 +327,6 @@ void Game::updateBot(Snake &s, float dt) {
         }
     }
 
-    // Desvia de cobra na frente
     bool danger = false;
     float dangerAngle = 0;
     for (int i = 0; i < MAX_SNAKES; i++) {
@@ -419,7 +406,6 @@ void Game::updateCamera(float dt) {
 }
 
 void Game::checkCollisions() {
-    // Cobras comem comida
     for (int s = 0; s < MAX_SNAKES; s++) {
         if (!snakes[s].alive) continue;
         Vec2 head = snakes[s].body[0];
@@ -431,7 +417,6 @@ void Game::checkCollisions() {
             }
         }
     }
-    // Cabeça bate no corpo dos outros
     for (int s = 0; s < MAX_SNAKES; s++) {
         if (!snakes[s].alive) continue;
         Vec2 head = snakes[s].body[0];
@@ -507,7 +492,6 @@ void Game::addScore(Snake &s, int amount) {
     s.score += 1;
 }
 
-// ===== UTILITÁRIOS =====
 float Game::dist(float x1, float y1, float x2, float y2) {
     float dx = x2 - x1;
     float dy = y2 - y1;
