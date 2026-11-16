@@ -38,12 +38,18 @@ bool Game::init() {
         return false;
     }
 
-    // CORREÇÃO TELA CHEIA - força fullscreen de verdade
-    screen = SDL_SetVideoMode(1920, 1080, 32, SDL_HWSURFACE | SDL_DOUBLEBUF | SDL_FULLSCREEN);
-    if (!screen) {
-        screen = SDL_SetVideoMode(1280, 720, 32, SDL_HWSURFACE | SDL_DOUBLEBUF | SDL_FULLSCREEN);
+    // Tenta usar a maior resolução que o console listar
+    int w = SCREEN_W;
+    int h = SCREEN_H;
+    SDL_Rect **modes = SDL_ListModes(NULL, SDL_HWSURFACE | SDL_DOUBLEBUF);
+    if (modes && modes != (SDL_Rect **)-1 && modes[0]) {
+        w = modes[0]->w;
+        h = modes[0]->h;
     }
+
+    screen = SDL_SetVideoMode(w, h, 32, SDL_HWSURFACE | SDL_DOUBLEBUF | SDL_FULLSCREEN);
     if (!screen) {
+        // Se falhar, volta para a resolução padrão do jogo
         screen = SDL_SetVideoMode(SCREEN_W, SCREEN_H, 32, SDL_HWSURFACE | SDL_DOUBLEBUF | SDL_FULLSCREEN);
         if (!screen) return false;
     }
@@ -315,7 +321,7 @@ void Game::updatePlayer(Snake &s, float dt, float analogX, float analogY, bool b
 
 void Game::updateBot(Snake &s, float dt) {
     if (!s.alive) return;
-    s.aiTimer -= 1;
+    s.aiTimer -= 1;   // antes era (int)dt, que virava 0 e travava a IA
     Vec2 head = s.body[0];
 
     float dCenter = dist(head.x, head.y, 0, 0);
