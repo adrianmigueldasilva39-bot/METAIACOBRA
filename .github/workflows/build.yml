@@ -1,7 +1,8 @@
-name: Compilar PKG
+name: Compilar slips3
 
 on:
   push:
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
@@ -20,7 +21,6 @@ jobs:
       - name: Baixar toolchain do PS3
         run: |
           curl -sL https://github.com/bucanero/ps3toolchain/releases/download/ubuntu-latest-fad3b5fb/ps3dev-ubuntu-latest-2020-08-31.tar.gz | tar xz -C /opt
-          ls /opt/ps3dev
           echo "PS3DEV=/opt/ps3dev" >> $GITHUB_ENV
           echo "PSL1GHT=/opt/ps3dev" >> $GITHUB_ENV
           echo "/opt/ps3dev/bin" >> $GITHUB_PATH
@@ -29,9 +29,9 @@ jobs:
       - name: Gerar icone
         run: |
           python3 - <<'PY'
-          import zlib, struct
+          import zlib, struct, math
           W, H = 320, 176
-          circles = [(60 + i * 26, 92 + int(34 * __import__('math').sin(i * 0.5)), 15) for i in range(10)]
+          circles = [(60 + i * 26, 92 + int(34 * math.sin(i * 0.5)), 15) for i in range(10)]
           raw = b''
           for y in range(H):
               raw += b'\x00'
@@ -52,6 +52,8 @@ jobs:
         run: make
 
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          name: cobra-arena-pkg
-          path: cobra.pkg
+          name: slips3-pkg
+          path: slips3.pkg
+          if-no-files-found: error
