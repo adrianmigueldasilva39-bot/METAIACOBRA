@@ -26,11 +26,16 @@ all: $(TARGET).elf $(TARGET).pkg
 $(TARGET).elf: $(OBJS)
 	$(CXX) $(OBJS) $(LDFLAGS) $(LIBS) -o $@
 
-$(TARGET).pkg: $(TARGET).elf
+PARAM.SFO: sfo.xml
+	python3 $(PSL1GHT)/bin/sfo.py sfo.xml PARAM.SFO || \
+	python3 $(PS3DEV)/ppu/bin/sfo.py sfo.xml PARAM.SFO || \
+	$(PSL1GHT)/bin/sfo sfo.xml PARAM.SFO
+
+$(TARGET).pkg: $(TARGET).elf PARAM.SFO
 	$(PSL1GHT)/bin/make_self $(TARGET).elf $(TARGET).self || cp $(TARGET).elf $(TARGET).self
-	python3 $(PS3DEV)/ppu/bin/make_pkg.py --id $(APPID) --title "$(TITLE)" $(TARGET).self $(TARGET).pkg || touch $(TARGET).pkg
+	python3 $(PS3DEV)/ppu/bin/make_pkg.py --id $(APPID) --title "$(TITLE)" --sfo PARAM.SFO $(TARGET).self $(TARGET).pkg || touch $(TARGET).pkg
 
 clean:
-	rm -f $(OBJS) $(TARGET).elf $(TARGET).self $(TARGET).pkg
+	rm -f $(OBJS) $(TARGET).elf $(TARGET).self $(TARGET).pkg PARAM.SFO
 
 .PHONY: all clean
