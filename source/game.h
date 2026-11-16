@@ -13,6 +13,9 @@
 #define MAX_SNAKES 26
 #define MAX_FOOD 500
 #define MAX_PARTICLES 300
+#define RANK_SHOW 8
+
+extern volatile bool g_exitRequested;
 
 struct Vec2 {
     float x; float y;
@@ -36,9 +39,13 @@ public:
     Game(); ~Game();
     bool init(); void run(); void shutdown();
 private:
-    SDL_Surface* screen; bool running; int gameState;
+    SDL_Surface* screen; bool running; bool sdlUp; int gameState;
     float cameraX; float cameraY; float zoom; float targetZoom; int frameCount;
     Snake snakes[MAX_SNAKES]; Food foods[MAX_FOOD]; Particle particles[MAX_PARTICLES];
+    int rankOrder[MAX_SNAKES]; int rankCount; int playerRank;
+    int bestScore;
+    int deathScore; int deathLength; int deathKills; int deathRank;
+
     void initWorld(); void resetPlayer();
     void spawnSnake(Snake &s, bool isPlayer, float x, float y);
     void spawnFood(int index, bool anywhere);
@@ -47,15 +54,24 @@ private:
     void updatePlayer(Snake &s, float dt, float analogX, float analogY, bool boostBtn);
     void updateBot(Snake &s, float dt);
     void updateFoods(float dt); void updateParticles(float dt); void updateCamera(float dt);
+    void updateRanking();
     void checkCollisions(); void eatFood(Snake &s, int foodIndex);
     void killSnake(int index, int killerIndex); void addScore(Snake &s, int amount);
-    void render(); void renderMenu(); void renderGameOver();
+
+    void render(); void renderMenu(); void drawWorld(); void drawHUD();
+    void drawRanking(); void drawRankRow(int x, int y, int boxW, int pos, Snake &s);
+    void drawDeathPanel();
     void drawBackground(); void drawBorder(); void drawFood(); void drawSnake(Snake &s);
-    void drawParticles(); void drawMinimap(); void drawHUD();
+    void drawParticles(); void drawMinimap();
     void drawGlowCircle(int sx, int sy, int radius, Uint8 r, Uint8 g, Uint8 b, Uint8 alpha);
     void drawFilledCircle(int cx, int cy, int radius, Uint8 r, Uint8 g, Uint8 b);
     void drawCircleOutline(int cx, int cy, int radius, Uint8 r, Uint8 g, Uint8 b);
-    void drawText(const char* text, int x, int y, Uint8 r, Uint8 g, Uint8 b, bool big);
+    void fillRect(int x, int y, int w, int h, Uint8 r, Uint8 g, Uint8 b);
+    void drawChar(int x, int y, char c, int scale, Uint8 r, Uint8 g, Uint8 b);
+    void drawText(const char* text, int x, int y, int scale, Uint8 r, Uint8 g, Uint8 b);
+    void drawTextCentered(const char* text, int y, int scale, Uint8 r, Uint8 g, Uint8 b);
+    int textWidth(const char* text, int scale);
+
     float dist(float x1, float y1, float x2, float y2);
     float angleTo(float x1, float y1, float x2, float y2);
     float normalizeAngle(float a);
