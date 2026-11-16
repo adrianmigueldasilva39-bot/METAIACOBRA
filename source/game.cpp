@@ -1,6 +1,7 @@
 #include "game.h"
 #include <io/pad.h>
 #include <sysutil/sysutil.h>
+#include <sys/process.h>
 #include <cstdio>
 
 Game::Game()
@@ -267,9 +268,6 @@ void Game::addScore(Snake& s, int amount) {
 
 void Game::eatFood(Snake& s, int index) {
     addScore(s, foods[index].big ? 25 : 8);
-    for (int i = 0; i < 3; i++) {
-        spawnParticle(foods[index].pos.x, foods[index].pos.y, foods[index].r, foods[index].g, foods[index].b);
-    }
     spawnFood(index, false);
 }
 
@@ -386,23 +384,32 @@ void Game::updateBot(Snake& s, float dt) {
                 }
             }
         }
+        s.boosting = wantCut;
+    }
+    // Desvio de perigo: TODOS OS FRAMES, fora do aiTimer
+    s.turnSpeed = 6.0f;
+    if (!s.body.empty()) {
+        Vec2 head = s.body[0];
         float avoidX = 0;
         float avoidY = 0;
+        bool danger = false;
         for (int j = 0; j < MAX_SNAKES; j++) {
             if (&snakes[j] == &s) continue;
             if (!snakes[j].alive) continue;
-            for (size_t k = 2; k < snakes[j].body.size(); k += 3) {
-                float dd = dist(s.body[0].x, s.body[0].y, snakes[j].body[k].x, snakes[j].body[k].y);
-                if (dd < 90.0f) {
-                    avoidX += (s.body[0].x - snakes[j].body[k].x);
-                    avoidY += (s.body[0].y - snakes[j].body[k].y);
+            for (size_t k = 0; k < snakes[j].body.size(); k++) {
+                float dd = dist(head.x, head.y, snakes[j].body[k].x, snakes[j].body[k].y);
+                if (dd < 240.0f) {
+                    danger = true;
+                    avoidX += (head.x - snakes[j].body[k].x);
+                    avoidY += (head.y - snakes[j].body[k].y);
                 }
             }
         }
-        if (avoidX != 0 || avoidY != 0) {
-            s.aiTarget = Vec2(s.body[0].x + avoidX * 3.0f, s.body[0].y + avoidY * 3.0f);
+        if (danger && (avoidX != 0 || avoidY != 0)) {
+            s.aiTarget = Vec2(head.x + avoidX * 3.0f, head.y + avoidY * 3.0f);
+            s.turnSpeed = 8.5f;
+            s.boosting = false;
         }
-        s.boosting = wantCut;
     }
     s.targetAngle = angleTo(s.body[0].x, s.body[0].y, s.aiTarget.x, s.aiTarget.y);
     float diff = normalizeAngle(s.targetAngle - s.angle);
