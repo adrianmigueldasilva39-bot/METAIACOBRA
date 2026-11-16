@@ -1,6 +1,39 @@
 #include "game.h"
 #include <cstdio>
 
+static Uint32* g_buf = NULL;
+static int g_pitch = 0;
+static int g_w = 0;
+static int g_h = 0;
+
+static inline void putPixel(int x, int y, Uint32 c) {
+    if (x < 0 || y < 0 || x >= g_w || y >= g_h) return;
+    g_buf[y * g_pitch + x] = c;
+}
+
+static inline void fillHLine(int x0, int x1, int y, Uint32 c) {
+    if (y < 0 || y >= g_h) return;
+    if (x0 > x1) {
+        int t = x0;
+        x0 = x1;
+        x1 = t;
+    }
+    if (x1 < 0 || x0 >= g_w) return;
+    if (x0 < 0) x0 = 0;
+    if (x1 >= g_w) x1 = g_w - 1;
+    Uint32* row = g_buf + y * g_pitch + x0;
+    for (int x = x0; x <= x1; x++) {
+        *row++ = c;
+    }
+}
+
+static inline void fillRectFast(int x, int y, int w, int h, Uint32 c) {
+    if (w <= 0 || h <= 0) return;
+    for (int yy = y; yy < y + h; yy++) {
+        fillHLine(x, x + w - 1, yy, c);
+    }
+}
+
 static const Uint8 FONT_5x7[128][7] = {
     {0,0,0,0,0,0,0}, {0,0,0,0,0,0,0}, {0,0,0,0,0,0,0}, {0,0,0,0,0,0,0},
     {0,0,0,0,0,0,0}, {0,0,0,0,0,0,0}, {0,0,0,0,0,0,0}, {0,0,0,0,0,0,0},
@@ -108,25 +141,45 @@ static const Uint8 FONT_5x7[128][7] = {
 };
 
 void Game::drawFilledCircle(int cx, int cy, int radius, Uint8 r, Uint8 g, Uint8 b) {
-    if (radius <= 0) return;
+    if (radius <= 0 || g_buf == NULL) return;
     Uint32 c = getColor(r, g, b);
+    int r2 = radius * radius;
+    int w = radius;
     for (int y = -radius; y <= radius; y++) {
-        int w = (int)sqrtf((float)(radius * radius - y * y));
-        SDL_Rect rc = {(Sint16)(cx - w), (Sint16)(cy + y), (Uint16)(w * 2), 1};
-        SDL_FillRect(screen, &rc, c);
+        int y2 = y * y;
+        while (w >= 0 && w * w + y2 > r2) w--;
+        while ((w + 1) * (w + 1) + y2 <= r2) w++;
+        fillHLine(cx - w, cx + w, cy + y, c);
     }
 }
 
 void Game::drawCircleOutline(int cx, int cy, int radius, Uint8 r, Uint8 g, Uint8 b) {
+    if (radius <= 0 || g_buf == NULL) return;
     Uint32 c = getColor(r, g, b);
-    for (int a = 0; a < 360; a += 3) {
-        float rad = a * 3.14159f / 180.0f;
-        SDL_Rect rc = {(Sint16)(cx + (int)(cosf(rad) * radius)), (Sint16)(cy + (int)(sinf(rad) * radius)), 2, 2};
-        SDL_FillRect(screen, &rc, c);
+    int x = radius;
+    int y = 0;
+    int err = 1 - radius;
+    while (x >= y) {
+        putPixel(cx + x, cy + y, c);
+        putPixel(cx - x, cy + y, c);
+        putPixel(cx + x, cy - y, c);
+        putPixel(cx - x, cy - y, c);
+        putPixel(cx + y, cy + x, c);
+        putPixel(cx - y, cy + x, c);
+        putPixel(cx + y, cy - x, c);
+        putPixel(cx - y, cy - x, c);
+        y++;
+        if (err < 0) {
+            err += 2 * y + 1;
+        } else {
+            x--;
+            err += 2 * (y - x) + 1;
+        }
     }
 }
 
 void Game::drawLine(int x0, int y0, int x1, int y1, Uint8 r, Uint8 g, Uint8 b) {
+    if (g_buf == NULL) return;
     Uint32 c = getColor(r, g, b);
     int dx = abs(x1 - x0);
     int sx = x0 < x1 ? 1 : -1;
@@ -136,10 +189,7 @@ void Game::drawLine(int x0, int y0, int x1, int y1, Uint8 r, Uint8 g, Uint8 b) {
     int x = x0;
     int y = y0;
     while (true) {
-        if (x >= 0 && y >= 0 && x < screen->w && y < screen->h) {
-            SDL_Rect rc = {(Sint16)x, (Sint16)y, 1, 1};
-            SDL_FillRect(screen, &rc, c);
-        }
+        putPixel(x, y, c);
         if (x == x1 && y == y1) break;
         int e2 = 2 * err;
         if (e2 >= dy) {
@@ -154,41 +204,43 @@ void Game::drawLine(int x0, int y0, int x1, int y1, Uint8 r, Uint8 g, Uint8 b) {
 }
 
 void Game::drawGlowCircle(int sx, int sy, int radius, Uint8 r, Uint8 g, Uint8 b) {
-    drawFilledCircle(sx, sy, radius + 7, r / 5, g / 5, b / 5);
-    drawFilledCircle(sx, sy, radius + 2, r / 2, g / 2, b / 2);
+    drawFilledCircle(sx, sy, radius + 6, r / 5, g / 5, b / 5);
     drawFilledCircle(sx, sy, radius, r, g, b);
-    drawFilledCircle(sx, sy, radius / 2, 255, 255, 255);
 }
 
 void Game::drawText(const char* text, int x, int y, Uint8 r, Uint8 g, Uint8 b, bool big) {
+    if (g_buf == NULL) return;
     int s = big ? 3 : 2;
     int cx = x;
     Uint32 c = getColor(r, g, b);
     for (int i = 0; text[i] != 0; i++) {
         unsigned char ch = (unsigned char)text[i];
         if (ch == ' ') {
-            cx += (5 + 1) * s;
+            cx += 6 * s;
             continue;
         }
         if (ch < 32 || ch > 126) {
-            cx += (5 + 1) * s;
+            cx += 6 * s;
             continue;
         }
         for (int row = 0; row < 7; row++) {
             Uint8 bits = FONT_5x7[ch][row];
             for (int col = 0; col < 5; col++) {
                 if (bits & (0x10 >> col)) {
-                    SDL_Rect rc = {(Sint16)(cx + col * s), (Sint16)(y + row * s), (Uint16)s, (Uint16)s};
-                    SDL_FillRect(screen, &rc, c);
+                    fillRectFast(cx + col * s, y + row * s, s, s, c);
                 }
             }
         }
-        cx += (5 + 1) * s;
+        cx += 6 * s;
     }
 }
 
 void Game::drawBackground() {
-    SDL_FillRect(screen, NULL, getColor(12, 14, 22));
+    Uint32 bg = getColor(12, 14, 22);
+    for (int y = 0; y < g_h; y++) {
+        Uint32* row = g_buf + y * g_pitch;
+        for (int x = 0; x < g_w; x++) row[x] = bg;
+    }
     float hexR = 70.0f;
     float stepX = hexR * 1.5f;
     float stepY = hexR * 1.732f;
@@ -204,7 +256,7 @@ void Game::drawBackground() {
         for (int gx = gxStart; gx <= gxEnd; gx++) {
             float wx = gx * stepX + ((gy & 1) ? stepX / 2.0f : 0.0f);
             float wy = gy * stepY;
-            Vec2 prev = worldToScreen(wx + cosf(0) * hexR, wy + sinf(0) * hexR);
+            Vec2 prev = worldToScreen(wx + hexR, wy);
             for (int k = 1; k <= 6; k++) {
                 float a = k * 1.0471975f;
                 Vec2 cur = worldToScreen(wx + cosf(a) * hexR, wy + sinf(a) * hexR);
@@ -228,9 +280,6 @@ void Game::drawBorder() {
         if (p1.y < -50 && p2.y < -50) continue;
         if (p1.y > H + 50 && p2.y > H + 50) continue;
         drawLine((int)p1.x, (int)p1.y, (int)p2.x, (int)p2.y, 255, 40, 40);
-        Vec2 q1 = worldToScreen(cosf(a1) * (WORLD_RADIUS - 6), sinf(a1) * (WORLD_RADIUS - 6));
-        Vec2 q2 = worldToScreen(cosf(a2) * (WORLD_RADIUS - 6), sinf(a2) * (WORLD_RADIUS - 6));
-        drawLine((int)q1.x, (int)q1.y, (int)q2.x, (int)q2.y, 255, 80, 80);
     }
 }
 
@@ -264,10 +313,8 @@ void Game::drawSnake(Snake& s) {
         Uint8 fr = (Uint8)(r * (1.0f - t * 0.25f));
         Uint8 fg = (Uint8)(g * (1.0f - t * 0.25f));
         Uint8 fb = (Uint8)(b * (1.0f - t * 0.25f));
-        drawFilledCircle((int)sc.x + 1, (int)sc.y + 2, rad, 8, 8, 12);
-        drawFilledCircle((int)sc.x, (int)sc.y, rad, fr, fg, fb);
-        drawFilledCircle((int)sc.x, (int)sc.y, rad - 2, (Uint8)(fr * 0.92f), (Uint8)(fg * 0.92f), (Uint8)(fb * 0.92f));
-        drawFilledCircle((int)sc.x - rad / 3, (int)sc.y - rad / 3, rad / 3, 255, 255, 255);
+        drawFilledCircle((int)sc.x, (int)sc.y, rad, 8, 8, 12);
+        drawFilledCircle((int)sc.x, (int)sc.y, rad - 2, fr, fg, fb);
     }
     if (!s.body.empty()) {
         Vec2 h = worldToScreen(s.body[0].x, s.body[0].y);
@@ -275,9 +322,8 @@ void Game::drawSnake(Snake& s) {
         Uint8 r = s.cols[0][0];
         Uint8 g = s.cols[0][1];
         Uint8 b = s.cols[0][2];
-        drawFilledCircle((int)h.x + 1, (int)h.y + 2, rad, 8, 8, 12);
-        drawFilledCircle((int)h.x, (int)h.y, rad, r, g, b);
-        drawFilledCircle((int)h.x, (int)h.y, rad - 2, (Uint8)(r * 0.92f), (Uint8)(g * 0.92f), (Uint8)(b * 0.92f));
+        drawFilledCircle((int)h.x, (int)h.y, rad, 8, 8, 12);
+        drawFilledCircle((int)h.x, (int)h.y, rad - 2, r, g, b);
         float px = -sinf(s.angle);
         float py = cosf(s.angle);
         float ex1 = h.x + cosf(s.angle) * rad * 0.65f + px * rad * 0.55f;
@@ -290,9 +336,6 @@ void Game::drawSnake(Snake& s) {
         drawFilledCircle((int)ex2, (int)ey2, rad / 3, 255, 255, 255);
         drawFilledCircle((int)ex1 + 1, (int)ey1 + 1, rad / 5, 0, 0, 0);
         drawFilledCircle((int)ex2 + 1, (int)ey2 + 1, rad / 5, 0, 0, 0);
-        drawFilledCircle((int)ex1 - 1, (int)ey1 - 1, 2, 255, 255, 255);
-        drawFilledCircle((int)ex2 - 1, (int)ey2 - 1, 2, 255, 255, 255);
-        drawFilledCircle((int)(h.x + cosf(s.angle) * rad * 0.8f), (int)(h.y + sinf(s.angle) * rad * 0.8f), 3, 0, 0, 0);
     }
 }
 
@@ -312,15 +355,13 @@ void Game::drawMinimap() {
     int mr = 95;
     drawFilledCircle(mx, my, mr, 18, 20, 32);
     drawCircleOutline(mx, my, mr, 255, 255, 255);
-    drawCircleOutline(mx, my, mr - 2, 120, 130, 150);
     for (int i = 0; i < MAX_SNAKES; i++) {
         if (!snakes[i].alive) continue;
         if (snakes[i].body.empty()) continue;
         int px = mx + (int)(snakes[i].body[0].x / WORLD_RADIUS * mr);
         int py = my + (int)(snakes[i].body[0].y / WORLD_RADIUS * mr);
         Uint32 c = snakes[i].isPlayer ? getColor(0, 255, 120) : getColor(255, 255, 255);
-        SDL_Rect rc = {(Sint16)(px - 3), (Sint16)(py - 3), 6, 6};
-        SDL_FillRect(screen, &rc, c);
+        fillRectFast(px - 3, py - 3, 6, 6, c);
     }
 }
 
@@ -375,27 +416,37 @@ void Game::renderGameOver() {
     drawParticles();
     drawMinimap();
     drawLeaderboard();
-    SDL_Rect box = {(Sint16)(screen->w / 2 - 280), (Sint16)(screen->h / 2 - 60), 560, 100};
-    SDL_FillRect(screen, &box, getColor(20, 5, 5));
+    Uint32 boxColor = getColor(20, 5, 5);
+    fillRectFast(screen->w / 2 - 280, screen->h / 2 - 60, 560, 100, boxColor);
     drawText("VOCE MORREU!", screen->w / 2 - 140, screen->h / 2 - 40, 255, 50, 50, true);
     drawText("APERTE X PARA VOLTAR", screen->w / 2 - 180, screen->h / 2 + 10, 255, 255, 255, true);
 }
 
 void Game::render() {
+    if (SDL_MUSTLOCK(screen)) {
+        SDL_LockSurface(screen);
+    }
+    g_buf = (Uint32*)screen->pixels;
+    g_pitch = screen->pitch / 4;
+    g_w = screen->w;
+    g_h = screen->h;
     if (gameState == 2) {
         renderGameOver();
-        SDL_Flip(screen);
-        return;
+    } else {
+        drawBackground();
+        drawBorder();
+        drawFood();
+        for (int i = 0; i < MAX_SNAKES; i++) {
+            drawSnake(snakes[i]);
+        }
+        drawParticles();
+        drawMinimap();
+        drawLeaderboard();
+        drawHUD();
     }
-    drawBackground();
-    drawBorder();
-    drawFood();
-    for (int i = 0; i < MAX_SNAKES; i++) {
-        drawSnake(snakes[i]);
+    if (SDL_MUSTLOCK(screen)) {
+        SDL_UnlockSurface(screen);
     }
-    drawParticles();
-    drawMinimap();
-    drawLeaderboard();
-    drawHUD();
+    g_buf = NULL;
     SDL_Flip(screen);
 }
