@@ -1,22 +1,26 @@
-#include <SDL/SDL.h>
-#include <stdio.h>
 #include "game.h"
+#include <stdio.h>
+#include <io/pad.h>
+#include <sysutil/sysutil.h>
 
-int main(int argc, char *argv[]) {
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYPAD) < 0) {
-        printf("SDL_Init falhou: %s\n", SDL_GetError());
-        return 1;
+volatile bool g_exitRequested = false;
+
+static void sysutil_exit_callback(uint64_t status, uint64_t param, void* userdata) {
+    (void)param; (void)userdata;
+    if (status == SYSUTIL_EXIT_GAME) g_exitRequested = true;
+}
+
+int main(int argc, char* argv[]) {
+    (void)argc; (void)argv;
+    sysUtilRegisterCallback(0, sysutil_exit_callback, NULL);
+    {
+        Game game;
+        if (!game.init()) {
+            printf("Erro ao iniciar o jogo!\n");
+            return 1;
+        }
+        game.run();
+        game.shutdown();
     }
-    SDL_Surface *screen = SDL_SetVideoMode(1280, 720, 32, SDL_HWSURFACE | SDL_DOUBLEBUF);
-    if (!screen) {
-        printf("SetVideoMode falhou: %s\n", SDL_GetError());
-        SDL_Quit();
-        return 1;
-    }
-    SDL_ShowCursor(SDL_DISABLE);
-    SDL_JoystickOpen(0);
-    Game game;
-    game.run(screen);
-    SDL_Quit();
     return 0;
 }
