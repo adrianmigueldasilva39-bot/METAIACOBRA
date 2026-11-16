@@ -139,13 +139,18 @@ void Game::renderGameOver() {
 }
 
 void Game::render() {
-    if (gameState == 0) { renderMenu(); return; }
-    if (gameState == 2) { renderGameOver(); return; }
-    drawBackground();
-    drawBorder();
-    drawFood();
-    for (int i = 0; i < MAX_SNAKES; i++) drawSnake(snakes[i]);
-    drawParticles();
-    drawMinimap();
-    drawHUD();
+    if (gameState == 0) {
+        renderMenu();
+    } else if (gameState == 2) {
+        renderGameOver();
+    } else {
+        drawBackground();
+        drawBorder();
+        drawFood();
+        for (int i = 0; i < MAX_SNAKES; i++) drawSnake(snakes[i]);
+        drawParticles();
+        drawMinimap();
+        drawHUD();
+    }
+    SDL_Flip(screen);
 }
