@@ -2,14 +2,14 @@ TARGET = slips3
 TITLE = slips3
 APPID = SLIP00001
 
-PS3DEV = /opt/ps3dev
-PSL1GHT = /opt/ps3dev/ppu
-PORTLIBS = /opt/ps3dev/portlibs/ppu
+PS3DEV ?= /usr/local/ps3dev
+PSL1GHT ?= $(PS3DEV)/ppu
+PORTLIBS ?= $(PS3DEV)/portlibs/ppu
 
 CXX = ppu-g++
 CC = ppu-gcc
 
-CFLAGS = -O2 -Wall -mcpu=cell -I$(PORTLIBS)/include -I$(PSL1GHT)/include -I$(PSL1GHT)/include/rsx
+CFLAGS = -O2 -Wall -mcpu=cell -I$(PORTLIBS)/include -I$(PSL1GHT)/include
 CXXFLAGS = $(CFLAGS) -std=gnu++98
 LDFLAGS = -L$(PORTLIBS)/lib -L$(PSL1GHT)/lib
 
