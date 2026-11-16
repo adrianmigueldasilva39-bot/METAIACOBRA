@@ -2,25 +2,7 @@
 #include <stdio.h>
 #include <io/pad.h>
 #include <sysutil/sysutil.h>
-
+#include <sys/process.h>
 volatile bool g_exitRequested = false;
-
-static void sysutil_exit_callback(uint64_t status, uint64_t param, void* userdata) {
-    (void)param; (void)userdata;
-    if (status == SYSUTIL_EXIT_GAME) g_exitRequested = true;
-}
-
-int main(int argc, char* argv[]) {
-    (void)argc; (void)argv;
-    sysUtilRegisterCallback(0, sysutil_exit_callback, NULL);
-    {
-        Game game;
-        if (!game.init()) {
-            printf("Erro ao iniciar o jogo!\n");
-            return 1;
-        }
-        game.run();
-        game.shutdown();
-    }
-    return 0;
-}
+static void cb(uint64_t s,uint64_t p,void* u){(void)p;(void)u; if(s==SYSUTIL_EXIT_GAME) g_exitRequested=true;}
+int main(int argc,char* argv[]){(void)argc;(void)argv; sysUtilRegisterCallback(0,cb,NULL); { Game g; if(!g.init()){printf("fail\n"); return 1;} g.run(); g.shutdown(); } sysProcessExit(0); return 0; }
