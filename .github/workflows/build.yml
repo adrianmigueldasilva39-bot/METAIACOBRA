@@ -12,18 +12,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Procurar ferramentas
+      - name: Diagnostico
         run: |
-          find / \( -name "sfo*" -o -name "make_pkg*" -o -name "make_self*" \) -not -path "*/proc/*" 2>/dev/null || true
+          find / -name "make_pkg*" -not -path "*/proc/*" 2>/dev/null || true
+          python3 /usr/local/ps3dev/bin/sfo.py --help || true
 
       - name: Compilar
         run: |
           export PS3DEV=/usr/local/ps3dev
           export PSL1GHT=/usr/local/ps3dev/ppu
           export PATH=$PATH:/usr/local/ps3dev/ppu/bin:/usr/local/ps3dev/bin
-          ls /usr/local/ps3dev/ppu/include/io/pad.h
           make
-          ls -lh slips3.pkg
 
       - uses: actions/upload-artifact@v4
         with:
