@@ -16,7 +16,7 @@ bool Game::init() {
         return false;
     }
     ioPadInit(7);
-    screen = SDL_SetVideoMode(1280, 720, 32, SDL_HWSURFACE | SDL_DOUBLEBUF | SDL_FULLSCREEN);
+    screen = SDL_SetVideoMode(1280, 720, 32, SDL_SWSURFACE | SDL_FULLSCREEN);
     if (!screen) {
         return false;
     }
