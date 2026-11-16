@@ -1,7 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<params>
-  <param key="TITLE" value="slips3" />
-  <param key="APP_VER" value="01.00" />
-  <param key="CATEGORY" value="HG" />
-  <param key="PARENTAL_LEVEL" value="1" />
-</params>
+<sfo>
+  <TITLE>slips3</TITLE>
+  <TITLE_ID>SLIP00001</TITLE_ID>
+  <CATEGORY>HG</CATEGORY>
+  <APP_VER>01.00</APP_VER>
+  <VERSION>01.00</VERSION>
+  <PARENTAL_LEVEL>1</PARENTAL_LEVEL>
+  <ATTRIBUTE>0x8000</ATTRIBUTE>
+  <RESOLUTION>0x63</RESOLUTION>
+  <SOUND_FORMAT>0x200</SOUND_FORMAT>
+</sfo>
