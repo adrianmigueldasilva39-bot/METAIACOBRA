@@ -6,9 +6,14 @@
 #include <string.h>
 #include <math.h>
 
+#define NUM_BOT_NAMES 26
+static const char* BOT_NAMES[NUM_BOT_NAMES] = {
+    "NEO", "ZICO", "LUNA", "RAIO", "KIRA", "TITA", "BRUNO", "PAULO", "ANA", "MIKO",
+    "ZEUS", "NOVA", "LOBO", "FENIX", "DUDU", "MAGO", "THOR", "RUBI", "SOL", "VEGA",
+    "KAIO", "ICARO", "BIA", "DANTE", "YUKI", "CHICO"
+};
+
 // Garante que o body tenha pelo menos 'length' segmentos.
-// Quando a cobra cresce, o length aumenta mas o body não, e isso fazia
-// o código acessar posições inexistentes e travar o PS3.
 static void ensureBody(Snake &s) {
     while ((int)s.body.size() < (int)s.length) {
         s.body.push_back(s.body.empty() ? Vec2(0, 0) : s.body.back());
@@ -19,12 +24,20 @@ static void ensureBody(Snake &s) {
 Game::Game() {
     screen = NULL;
     running = false;
+    sdlUp = false;
     gameState = 0;
     cameraX = 0;
     cameraY = 0;
     zoom = 1.0f;
     targetZoom = 1.0f;
     frameCount = 0;
+    rankCount = 0;
+    playerRank = 1;
+    bestScore = 0;
+    deathScore = 0;
+    deathLength = 0;
+    deathKills = 0;
+    deathRank = 1;
     for (int i = 0; i < MAX_FOOD; i++) foods[i].active = false;
     for (int i = 0; i < MAX_PARTICLES; i++) particles[i].active = false;
 }
@@ -37,6 +50,7 @@ bool Game::init() {
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK) < 0) {
         return false;
     }
+    sdlUp = true;
 
     // Tenta usar a maior resolução que o console listar
     int w = SCREEN_W;
@@ -49,10 +63,9 @@ bool Game::init() {
 
     screen = SDL_SetVideoMode(w, h, 32, SDL_HWSURFACE | SDL_DOUBLEBUF | SDL_FULLSCREEN);
     if (!screen) {
-        // Se falhar, volta para a resolução padrão do jogo
         screen = SDL_SetVideoMode(SCREEN_W, SCREEN_H, 32, SDL_HWSURFACE | SDL_DOUBLEBUF | SDL_FULLSCREEN);
-        if (!screen) return false;
     }
+    if (!screen) return false;
 
     SDL_ShowCursor(SDL_DISABLE);
     ioPadInit(7);
@@ -63,6 +76,10 @@ bool Game::init() {
 }
 
 void Game::shutdown() {
+    // Pode ser chamado mais de uma vez (main e destrutor); só faz a limpeza uma vez
+    if (!sdlUp) return;
+    sdlUp = false;
+    running = false;
     ioPadEnd();
     SDL_Quit();
     screen = NULL;
@@ -75,15 +92,12 @@ void Game::initWorld() {
         snakes[i].path.clear();
         snakes[i].body.clear();
     }
-    // Player no centro
     spawnSnake(snakes[0], true, 0, 0);
-    // Bots espalhados
     for (int i = 1; i < MAX_SNAKES; i++) {
         float a = ((float)rand() / RAND_MAX) * 6.283f;
         float d = 500 + ((float)rand() / RAND_MAX) * 3000;
         spawnSnake(snakes[i], false, cosf(a) * d, sinf(a) * d);
     }
-    // Comidas
     for (int i = 0; i < MAX_FOOD; i++) {
         spawnFood(i, true);
     }
@@ -91,6 +105,7 @@ void Game::initWorld() {
     cameraY = snakes[0].body[0].y;
     zoom = 1.0f;
     targetZoom = 1.0f;
+    updateRanking();
     gameState = 0;
 }
 
@@ -132,7 +147,7 @@ void Game::spawnSnake(Snake &s, bool isPlayer, float x, float y) {
         else if (c == 3) { s.colorR = 200; s.colorG = 50;  s.colorB = 255; s.colorR2 = 150; s.colorG2 = 20;  s.colorB2 = 220; }
         else if (c == 4) { s.colorR = 0;   s.colorG = 220; s.colorB = 220; s.colorR2 = 0;   s.colorG2 = 170; s.colorB2 = 170; }
         else { s.colorR = 255; s.colorG = 120; s.colorB = 0;   s.colorR2 = 220; s.colorG2 = 80;  s.colorB2 = 0; }
-        s.name = "BOT";
+        s.name = BOT_NAMES[rand() % NUM_BOT_NAMES];
     }
 
     s.path.clear();
@@ -185,6 +200,32 @@ void Game::spawnParticle(float x, float y, Uint8 r, Uint8 g, Uint8 b) {
     }
 }
 
+// ===== RANKING =====
+// Ordena as cobras vivas pelo tamanho (maior primeiro). Chamado todo frame,
+// então quem passa quem muda de posição na hora, como no Slither.io.
+void Game::updateRanking() {
+    int n = 0;
+    for (int i = 0; i < MAX_SNAKES; i++) {
+        if (snakes[i].alive) rankOrder[n++] = i;
+    }
+    for (int i = 1; i < n; i++) {
+        int key = rankOrder[i];
+        int j = i - 1;
+        while (j >= 0 && snakes[rankOrder[j]].length < snakes[key].length) {
+            rankOrder[j + 1] = rankOrder[j];
+            j--;
+        }
+        rankOrder[j + 1] = key;
+    }
+    rankCount = n;
+    // Só atualiza a posição se o jogador ainda estiver vivo
+    if (snakes[0].alive) {
+        for (int i = 0; i < n; i++) {
+            if (rankOrder[i] == 0) { playerRank = i + 1; break; }
+        }
+    }
+}
+
 // ===== LOOP PRINCIPAL =====
 void Game::run() {
     padInfo padinfo;
@@ -193,6 +234,8 @@ void Game::run() {
     bool startPressedBefore = false;
 
     while (running) {
+        if (g_exitRequested) break;
+
         Uint32 frameStart = SDL_GetTicks();
         float dt = (frameStart - lastTime) / 16.666f;
         if (dt > 3) dt = 3;
@@ -223,7 +266,7 @@ void Game::run() {
         }
 
         if (gameState == 0) {                       // MENU
-            if (startBtn && !startPressedBefore) gameState = 1;
+            if (startBtn && !startPressedBefore) resetPlayer();
         } else if (gameState == 1) {                // JOGANDO
             for (int i = 0; i < MAX_SNAKES; i++) {
                 if (snakes[i].alive) ensureBody(snakes[i]);
@@ -232,7 +275,6 @@ void Game::run() {
             for (int i = 1; i < MAX_SNAKES; i++) {
                 if (snakes[i].alive) updateBot(snakes[i], dt);
             }
-            // Move todas as cobras pelo path
             for (int i = 0; i < MAX_SNAKES; i++) {
                 if (!snakes[i].alive) continue;
                 Snake &s = snakes[i];
@@ -250,8 +292,17 @@ void Game::run() {
             updateParticles(dt);
             updateCamera(dt);
             checkCollisions();
-            if (!snakes[0].alive) gameState = 2;
-        } else if (gameState == 2) {                // GAME OVER
+            updateRanking();
+
+            if (!snakes[0].alive) {
+                deathScore = snakes[0].score;
+                deathLength = (int)snakes[0].length;
+                deathKills = snakes[0].kills;
+                deathRank = playerRank;
+                if (deathScore > bestScore) bestScore = deathScore;
+                gameState = 2;
+            }
+        } else if (gameState == 2) {                // TELA DE MORTE
             if (startBtn && !startPressedBefore) resetPlayer();
         }
         startPressedBefore = startBtn;
@@ -259,7 +310,6 @@ void Game::run() {
         render();
         frameCount++;
 
-        // Trava em ~60 FPS
         Uint32 elapsed = SDL_GetTicks() - frameStart;
         if (elapsed < 16) SDL_Delay(16 - elapsed);
     }
@@ -321,7 +371,7 @@ void Game::updatePlayer(Snake &s, float dt, float analogX, float analogY, bool b
 
 void Game::updateBot(Snake &s, float dt) {
     if (!s.alive) return;
-    s.aiTimer -= 1;   // antes era (int)dt, que virava 0 e travava a IA
+    s.aiTimer -= 1;
     Vec2 head = s.body[0];
 
     float dCenter = dist(head.x, head.y, 0, 0);
@@ -346,7 +396,6 @@ void Game::updateBot(Snake &s, float dt) {
         }
     }
 
-    // Desvia de cobra na frente
     bool danger = false;
     float dangerAngle = 0;
     for (int i = 0; i < MAX_SNAKES; i++) {
@@ -416,7 +465,6 @@ void Game::updateParticles(float dt) {
 void Game::updateCamera(float dt) {
     if (!snakes[0].alive) return;
     Vec2 head = snakes[0].body[0];
-    // Usa a resolução real da tela
     float tx = head.x - (screen->w / 2) / zoom;
     float ty = head.y - (screen->h / 2) / zoom;
     cameraX += (tx - cameraX) * 0.08f * dt;
@@ -427,7 +475,6 @@ void Game::updateCamera(float dt) {
 }
 
 void Game::checkCollisions() {
-    // Cobras comem comida
     for (int s = 0; s < MAX_SNAKES; s++) {
         if (!snakes[s].alive) continue;
         Vec2 head = snakes[s].body[0];
@@ -439,7 +486,6 @@ void Game::checkCollisions() {
             }
         }
     }
-    // Cabeça bate no corpo dos outros
     for (int s = 0; s < MAX_SNAKES; s++) {
         if (!snakes[s].alive) continue;
         Vec2 head = snakes[s].body[0];
@@ -477,9 +523,6 @@ void Game::killSnake(int index, int killerIndex) {
     s.alive = false;
     ensureBody(s);
 
-    // Solta comida em cada segmento da cobra morta.
-    // Se não houver slot livre, recicla uma comida qualquer,
-    // para que a comida da cobra sempre apareça.
     int n = (int)s.body.size();
     for (int j = 0; j < n; j += 2) {
         int slot = -1;
@@ -506,7 +549,6 @@ void Game::killSnake(int index, int killerIndex) {
         snakes[killerIndex].score += 100;
     }
 
-    // Bot morto respawna longe do player
     if (index != 0) {
         float a = ((float)rand() / RAND_MAX) * 6.283f;
         float d = 500 + ((float)rand() / RAND_MAX) * 3000;
@@ -531,7 +573,6 @@ float Game::angleTo(float x1, float y1, float x2, float y2) {
 }
 
 float Game::normalizeAngle(float a) {
-    // Protege contra NaN e infinito (antes um laço infinito travava o jogo)
     if (a != a || a > 1e9f || a < -1e9f) return 0.0f;
     const float PI_F = 3.14159265f;
     a = fmodf(a + PI_F, 2.0f * PI_F);
