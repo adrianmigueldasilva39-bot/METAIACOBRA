@@ -42,6 +42,7 @@ struct Snake {
     bool isPlayer;
     bool alive;
     std::vector<Vec2> body;
+    std::vector<Vec2> path;
     float angle;
     float targetAngle;
     float speed;
@@ -93,6 +94,7 @@ private:
     void spawnFood(int index, bool anywhere);
     void spawnParticle(float x, float y, Uint8 r, Uint8 g, Uint8 b);
     void spawnKillOrbs(Snake& s);
+    void rebuildBodyFromPath(Snake& s);
     void update(float dt);
     void updatePlayer(Snake& s, float dt, float ax, float ay, bool boostBtn);
     void updateBot(Snake& s, float dt);
@@ -117,6 +119,7 @@ private:
     void drawGlowCircle(int sx, int sy, int radius, Uint8 r, Uint8 g, Uint8 b);
     void drawFilledCircle(int cx, int cy, int radius, Uint8 r, Uint8 g, Uint8 b);
     void drawCircleOutline(int cx, int cy, int radius, Uint8 r, Uint8 g, Uint8 b);
+    void drawLine(int x0, int y0, int x1, int y1, Uint8 r, Uint8 g, Uint8 b);
     void drawText(const char* text, int x, int y, Uint8 r, Uint8 g, Uint8 b, bool big);
 
     float dist(float x1, float y1, float x2, float y2);
