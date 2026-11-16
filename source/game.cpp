@@ -9,6 +9,7 @@ Game::~Game() {}
 bool Game::init() {
     if (SDL_Init(SDL_INIT_VIDEO) < 0) return false;
     ioPadInit(7);
+    // AQUI QUE TAVA O ERRO - era SWSURFACE, agora HWSURFACE
     screen = SDL_SetVideoMode(1280, 720, 32, SDL_HWSURFACE | SDL_DOUBLEBUF);
     if (!screen) screen = SDL_SetVideoMode(1920, 1080, 32, SDL_HWSURFACE | SDL_DOUBLEBUF);
     if (!screen) return false;
@@ -94,7 +95,7 @@ void Game::updatePlayer(Snake &s, float dt, float analogX, float analogY, bool b
     s.angle += diff * s.turnSpeed * dt;
     s.boosting = boostBtn && s.boostTimer<=0;
     s.speed = s.boosting ? s.boostSpeed : s.baseSpeed;
-    if(s.boosting){ s.boostTimer=0.1f; s.length-=0.05f; }
+    if(s.boosting){ s.boostTimer=0.1f; }
     if(s.boostTimer>0) s.boostTimer-=dt;
     float nx = s.body[0].x + cos(s.angle)*s.speed*dt;
     float ny = s.body[0].y + sin(s.angle)*s.speed*dt;
@@ -128,11 +129,9 @@ void Game::updateCamera(float dt){ if(snakes[0].body.empty()) return; cameraX +=
 
 void Game::checkCollisions() {
     for(int i=0;i<MAX_SNAKES;i++) if(snakes[i].alive && !snakes[i].body.empty()){
-        // Comida
         for(int f=0;f<MAX_FOOD;f++) if(foods[f].active){
             if(dist(snakes[i].body[0].x, snakes[i].body[0].y, foods[f].pos.x, foods[f].pos.y) < snakes[i].radius + foods[f].radius) eatFood(snakes[i], f);
         }
-        // Bateu em outra cobra
         for(int j=0;j<MAX_SNAKES;j++) if(i!=j && snakes[j].alive){
             for(size_t k=1;k<snakes[j].body.size();k+=2){
                 if(dist(snakes[i].body[0].x, snakes[i].body[0].y, snakes[j].body[k].x, snakes[j].body[k].y) < snakes[i].radius){
