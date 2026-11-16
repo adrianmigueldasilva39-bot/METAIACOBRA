@@ -1,30 +1,38 @@
 name: Compilar slips3
+
 on:
   push:
+    branches: [ main ]
   workflow_dispatch:
+
 jobs:
   build:
     runs-on: ubuntu-latest
-    container: ubuntu:20.04
     steps:
       - name: Dependencias
-        run: |
-          apt-get update
-          DEBIAN_FRONTEND=noninteractive apt-get install -y curl make git python2 python3 libgmp10 libelf1 zlib1g libssl1.1 bzip2 xz-utils
-          ln -sf /usr/bin/python2 /usr/bin/python
+        run: sudo apt-get update && sudo apt-get install -y git make python3 wget
+
       - uses: actions/checkout@v4
+
       - name: Baixar toolchain do PS3
         run: |
-          curl -sL https://github.com/bucanero/ps3toolchain/releases/download/ubuntu-latest-fad3b5fb/ps3dev-ubuntu-latest-2020-08-31.tar.gz | tar xz -C /opt
+          wget -q https://github.com/ps3dev/ps3toolchain/releases/download/latest/ps3toolchain.tar.gz -O /tmp/ps3toolchain.tar.gz || wget -q https://github.com/ps3dev/ps3toolchain/releases/download/v1.0/ps3toolchain.tar.gz -O /tmp/ps3toolchain.tar.gz
+          sudo tar -xzf /tmp/ps3toolchain.tar.gz -C /opt || true
+          ls /opt/ps3dev/ppu/include/io/pad.h
           echo "PS3DEV=/opt/ps3dev" >> $GITHUB_ENV
-          echo "PSL1GHT=/opt/ps3dev" >> $GITHUB_ENV
-          echo "/opt/ps3dev/bin" >> $GITHUB_PATH
+          echo "PSL1GHT=/opt/ps3dev/ppu" >> $GITHUB_ENV
           echo "/opt/ps3dev/ppu/bin" >> $GITHUB_PATH
+          echo "/opt/ps3dev/bin" >> $GITHUB_PATH
+
       - name: Compilar
         run: |
+          export PS3DEV=/opt/ps3dev
+          export PSL1GHT=/opt/ps3dev/ppu
+          export PATH=$PATH:/opt/ps3dev/ppu/bin:/opt/ps3dev/bin
           make
           ls -lh *.pkg
           mv *.pkg slips3.pkg
+
       - uses: actions/upload-artifact@v4
         with:
           name: slips3-pkg
