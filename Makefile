@@ -5,18 +5,18 @@ include $(PSL1GHT)/ppu_rules
 
 .DEFAULT_GOAL := all
 
-TARGET    := cobra
-TITLE     := Cobra Arena
-APPID     := COBR00001
+TARGET    := slips3
+TITLE     := slips3
+APPID     := SLIP00001
 CONTENTID := UP0001-$(APPID)_00-0000000000000000
 SFOXML    := sfo.xml
 PORTLIBS  := $(PS3DEV)/portlibs/ppu
 
-MACHDEP := -mhard-float -fmodulo-sched -ffunction-sections -fdata-sections
-CFLAGS  := -O2 -Wall -mcpu=cell $(MACHDEP) -I$(PSL1GHT)/ppu/include -I$(PORTLIBS)/include
+MACHDEP  := -mhard-float -fmodulo-sched -ffunction-sections -fdata-sections
+CFLAGS   := -O2 -Wall -mcpu=cell $(MACHDEP) -I$(PSL1GHT)/ppu/include -I$(PORTLIBS)/include
 CXXFLAGS := $(CFLAGS) -fno-exceptions -fno-rtti
-LDFLAGS := $(MACHDEP) -L$(PSL1GHT)/ppu/lib -L$(PORTLIBS)/lib
-LIBS    := -lSDL -laudio -lspurs -lrsx -lgcm_sys -lio -lsysutil -lrt -llv2 -lm
+LDFLAGS  := $(MACHDEP) -L$(PSL1GHT)/ppu/lib -L$(PORTLIBS)/lib
+LIBS     := -lSDL -laudio -lspurs -lrsx -lgcm_sys -lio -lsysutil -lrt -llv2 -lm
 
 OBJS := source/main.o source/game.o source/render.o
 
