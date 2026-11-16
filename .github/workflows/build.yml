@@ -8,7 +8,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    container: ps3dev/ps3toolchain:latest
+    container: ghcr.io/altps3/ps3dev:latest
     steps:
       - uses: actions/checkout@v4
 
@@ -19,8 +19,7 @@ jobs:
           export PATH=$PATH:/usr/local/ps3dev/ppu/bin:/usr/local/ps3dev/bin
           ls /usr/local/ps3dev/ppu/include/io/pad.h
           make
-          ls -lh *.pkg
-          mv *.pkg slips3.pkg
+          ls -lh slips3.pkg
 
       - uses: actions/upload-artifact@v4
         with:
