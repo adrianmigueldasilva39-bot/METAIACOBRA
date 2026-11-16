@@ -18,7 +18,11 @@ LIBS = -lSDL -lSDLmain -laudio -lrsx -lgcm_sys -lsysutil -lio -lnet -lsysmodule 
 SOURCES = source/main.cpp source/game.cpp source/render.cpp
 OBJS = $(SOURCES:.cpp=.o)
 
-all: $(TARGET).elf $(TARGET).pkg
+MAKE_SELF = $(PS3DEV)/bin/make_self
+SFO_PY = $(PS3DEV)/bin/sfo.py
+MAKE_PKG = $(shell find $(PS3DEV) -name make_pkg.py -type f 2>/dev/null | head -1)
+
+all: $(TARGET).elf $(TARGET).self $(TARGET).pkg
 
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
@@ -26,15 +30,15 @@ all: $(TARGET).elf $(TARGET).pkg
 $(TARGET).elf: $(OBJS)
 	$(CXX) $(OBJS) $(LDFLAGS) $(LIBS) -o $@
 
-PARAM.SFO: sfo.xml
-	python3 $(PS3DEV)/bin/sfo.py sfo.xml PARAM.SFO
-
 $(TARGET).self: $(TARGET).elf
-	$(PS3DEV)/bin/make_self $(TARGET).elf $(TARGET).self
+	$(MAKE_SELF) $(TARGET).elf $(TARGET).self
 
-# make_pkg: caminho ainda não confirmado, ver a saída do "Procurar ferramentas"
+PARAM.SFO: sfo.xml
+	python3 $(SFO_PY) sfo.xml PARAM.SFO
+
 $(TARGET).pkg: $(TARGET).self PARAM.SFO
-	python3 $(PS3DEV)/bin/make_pkg.py --id $(APPID) --title "$(TITLE)" --sfo PARAM.SFO $(TARGET).self $(TARGET).pkg
+	@if [ -z "$(MAKE_PKG)" ]; then echo "make_pkg.py nao encontrado nesta imagem"; exit 1; fi
+	python3 $(MAKE_PKG) --id $(APPID) --title "$(TITLE)" --sfo PARAM.SFO $(TARGET).self $(TARGET).pkg
 
 clean:
 	rm -f $(OBJS) $(TARGET).elf $(TARGET).self $(TARGET).pkg PARAM.SFO
