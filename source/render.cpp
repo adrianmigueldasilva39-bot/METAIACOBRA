@@ -3,24 +3,22 @@
 
 void Game::drawFilledCircle(int cx, int cy, int radius, Uint8 r, Uint8 g, Uint8 b) {
     if (radius <= 0) return;
-    for (int y = -radius; y <= radius; y++) {
-        for (int x = -radius; x <= radius; x++) {
-            if (x*x + y*y <= radius*radius) setPixel(cx+x, cy+y, r, g, b);
-        }
-    }
+    // Usa FillRect, não setPixel - 100x mais rápido, não trava
+    SDL_Rect rect = { (Sint16)(cx - radius), (Sint16)(cy - radius), (Uint16)(radius*2), (Uint16)(radius*2) };
+    SDL_FillRect(screen, &rect, getColor(r,g,b));
 }
 
 void Game::drawCircleOutline(int cx, int cy, int radius, Uint8 r, Uint8 g, Uint8 b) {
-    for (int a = 0; a < 360; a++) {
-        float rad = a * 3.14159f / 180.0f;
-        setPixel(cx + (int)(cos(rad)*radius), cy + (int)(sin(rad)*radius), r, g, b);
-    }
+    // Só 4 pontos pra não travar, não 360 setPixel
+    SDL_Rect rect;
+    Uint32 c = getColor(r,g,b);
+    rect = { (Sint16)(cx - radius), (Sint16)(cy - 1), (Uint16)(radius*2), 2 }; SDL_FillRect(screen, &rect, c);
+    rect = { (Sint16)(cx - 1), (Sint16)(cy - radius), 2, (Uint16)(radius*2) }; SDL_FillRect(screen, &rect, c);
 }
 
 void Game::drawGlowCircle(int sx, int sy, int radius, Uint8 r, Uint8 g, Uint8 b, Uint8 alpha) {
     (void)alpha;
     drawFilledCircle(sx, sy, radius, r, g, b);
-    drawFilledCircle(sx, sy, radius/2, 255, 255, 255);
 }
 
 void Game::drawText(const char* text, int x, int y, Uint8 r, Uint8 g, Uint8 b, bool big) {
@@ -56,7 +54,6 @@ void Game::drawBorder() {
     Vec2 c = worldToScreen(0, 0);
     int rad = (int)(WORLD_RADIUS * zoom);
     drawCircleOutline((int)c.x, (int)c.y, rad, 255, 40, 40);
-    drawCircleOutline((int)c.x, (int)c.y, rad-2, 255, 80, 80);
 }
 
 void Game::drawFood() {
@@ -83,7 +80,6 @@ void Game::drawSnake(Snake &s) {
         Uint8 g = (i % 2 == 0) ? s.colorG : s.colorG2;
         Uint8 b = (i % 2 == 0) ? s.colorB : s.colorB2;
         drawFilledCircle((int)sc.x, (int)sc.y, rad, r, g, b);
-        drawFilledCircle((int)sc.x-2, (int)sc.y-2, rad/2, 255, 255, 255);
     }
     if (s.body.size() > 0) {
         Vec2 h = worldToScreen(s.body[0].x, s.body[0].y);
@@ -91,8 +87,6 @@ void Game::drawSnake(Snake &s) {
         float ey = sin(s.angle) * s.radius * 0.5f * zoom;
         drawFilledCircle((int)(h.x+ex-4), (int)(h.y+ey-4), 4, 255, 255, 255);
         drawFilledCircle((int)(h.x+ex+4), (int)(h.y+ey-4), 4, 255, 255, 255);
-        drawFilledCircle((int)(h.x+ex-4), (int)(h.y+ey-4), 2, 0, 0, 0);
-        drawFilledCircle((int)(h.x+ex+4), (int)(h.y+ey-4), 2, 0, 0, 0);
     }
 }
 
@@ -139,13 +133,17 @@ void Game::renderGameOver() {
 }
 
 void Game::render() {
-    if (gameState == 0) { renderMenu(); return; }
-    if (gameState == 2) { renderGameOver(); return; }
-    drawBackground();
-    drawBorder();
-    drawFood();
-    for (int i = 0; i < MAX_SNAKES; i++) drawSnake(snakes[i]);
-    drawParticles();
-    drawMinimap();
-    drawHUD();
+    if (gameState == 0) { renderMenu(); }
+    else if (gameState == 2) { renderGameOver(); }
+    else {
+        drawBackground();
+        drawBorder();
+        drawFood();
+        for (int i = 0; i < MAX_SNAKES; i++) drawSnake(snakes[i]);
+        drawParticles();
+        drawMinimap();
+        drawHUD();
+    }
+    // ISSO AQUI FALTAVA - sem isso fica tela preta pra sempre
+    SDL_Flip(screen);
 }
