@@ -3,22 +3,30 @@
 
 void Game::drawFilledCircle(int cx, int cy, int radius, Uint8 r, Uint8 g, Uint8 b) {
     if (radius <= 0) return;
-    // Usa FillRect, não setPixel - 100x mais rápido, não trava
-    SDL_Rect rect = { (Sint16)(cx - radius), (Sint16)(cy - radius), (Uint16)(radius*2), (Uint16)(radius*2) };
-    SDL_FillRect(screen, &rect, getColor(r,g,b));
+    // Redondo de verdade, mas rápido: desenha por linha, não pixel por pixel
+    Uint32 c = getColor(r,g,b);
+    for (int y = -radius; y <= radius; y++) {
+        int w = (int)sqrtf((float)(radius*radius - y*y));
+        SDL_Rect rect = { (Sint16)(cx - w), (Sint16)(cy + y), (Uint16)(w*2), 1 };
+        SDL_FillRect(screen, &rect, c);
+    }
 }
 
 void Game::drawCircleOutline(int cx, int cy, int radius, Uint8 r, Uint8 g, Uint8 b) {
-    // Só 4 pontos pra não travar, não 360 setPixel
-    SDL_Rect rect;
     Uint32 c = getColor(r,g,b);
-    rect = { (Sint16)(cx - radius), (Sint16)(cy - 1), (Uint16)(radius*2), 2 }; SDL_FillRect(screen, &rect, c);
-    rect = { (Sint16)(cx - 1), (Sint16)(cy - radius), 2, (Uint16)(radius*2) }; SDL_FillRect(screen, &rect, c);
+    for (int a = 0; a < 360; a += 6) {
+        float rad = a * 3.14159f / 180.0f;
+        SDL_Rect rect = { (Sint16)(cx + (int)(cos(rad)*radius)), (Sint16)(cy + (int)(sin(rad)*radius)), 2, 2 };
+        SDL_FillRect(screen, &rect, c);
+    }
 }
 
 void Game::drawGlowCircle(int sx, int sy, int radius, Uint8 r, Uint8 g, Uint8 b, Uint8 alpha) {
     (void)alpha;
+    // Brilho igual da foto: círculo maior clarinho + miolo forte
+    drawFilledCircle(sx, sy, radius+3, r/2, g/2, b/2);
     drawFilledCircle(sx, sy, radius, r, g, b);
+    drawFilledCircle(sx, sy, radius/2, 255, 255, 255);
 }
 
 void Game::drawText(const char* text, int x, int y, Uint8 r, Uint8 g, Uint8 b, bool big) {
@@ -33,20 +41,23 @@ void Game::drawText(const char* text, int x, int y, Uint8 r, Uint8 g, Uint8 b, b
 }
 
 void Game::drawBackground() {
-    SDL_FillRect(screen, NULL, getColor(12, 12, 22));
-    int W = screen->w;
-    int H = screen->h;
+    // AZUL igual da foto, não preto
+    SDL_FillRect(screen, NULL, getColor(10, 60, 200));
+    int W = screen->w; int H = screen->h;
     int grid = (int)(60 * zoom);
     if (grid < 20) grid = 20;
     int offX = (int)(cameraX * zoom) % grid;
     if (offX < 0) offX += grid;
     int offY = (int)(cameraY * zoom) % grid;
     if (offY < 0) offY += grid;
+    Uint32 c = getColor(60, 110, 255);
     for (int x = -offX; x < W; x += grid) {
-        for (int yy = -offY; yy < H; yy += grid) {
-            SDL_Rect r = { (Sint16)x, (Sint16)yy, (Uint16)2, (Uint16)2 };
-            SDL_FillRect(screen, &r, getColor(35, 35, 55));
-        }
+        SDL_Rect r = { (Sint16)x, 0, 1, (Uint16)H };
+        SDL_FillRect(screen, &r, c);
+    }
+    for (int y = -offY; y < H; y += grid) {
+        SDL_Rect r = { 0, (Sint16)y, (Uint16)W, 1 };
+        SDL_FillRect(screen, &r, c);
     }
 }
 
@@ -54,6 +65,7 @@ void Game::drawBorder() {
     Vec2 c = worldToScreen(0, 0);
     int rad = (int)(WORLD_RADIUS * zoom);
     drawCircleOutline((int)c.x, (int)c.y, rad, 255, 40, 40);
+    drawCircleOutline((int)c.x, (int)c.y, rad-2, 255, 80, 80);
 }
 
 void Game::drawFood() {
@@ -80,6 +92,7 @@ void Game::drawSnake(Snake &s) {
         Uint8 g = (i % 2 == 0) ? s.colorG : s.colorG2;
         Uint8 b = (i % 2 == 0) ? s.colorB : s.colorB2;
         drawFilledCircle((int)sc.x, (int)sc.y, rad, r, g, b);
+        drawFilledCircle((int)sc.x-2, (int)sc.y-2, rad/2, 255, 255, 255);
     }
     if (s.body.size() > 0) {
         Vec2 h = worldToScreen(s.body[0].x, s.body[0].y);
@@ -87,6 +100,8 @@ void Game::drawSnake(Snake &s) {
         float ey = sin(s.angle) * s.radius * 0.5f * zoom;
         drawFilledCircle((int)(h.x+ex-4), (int)(h.y+ey-4), 4, 255, 255, 255);
         drawFilledCircle((int)(h.x+ex+4), (int)(h.y+ey-4), 4, 255, 255, 255);
+        drawFilledCircle((int)(h.x+ex-4), (int)(h.y+ey-4), 2, 0, 0, 0);
+        drawFilledCircle((int)(h.x+ex+4), (int)(h.y+ey-4), 2, 0, 0, 0);
     }
 }
 
@@ -100,14 +115,17 @@ void Game::drawParticles() {
 
 void Game::drawMinimap() {
     int W = screen->w; int H = screen->h;
-    int mx = W - 110; int my = H - 110; int mr = 90;
-    drawFilledCircle(mx, my, mr, 20, 20, 35);
-    drawCircleOutline(mx, my, mr, 255, 255, 255);
+    // Quadrado azul igual da foto, no canto superior direito
+    int mx = W - 180; int my = 10; int mw = 170; int mh = 170;
+    SDL_Rect bg = { (Sint16)mx, (Sint16)my, (Uint16)mw, (Uint16)mh };
+    SDL_FillRect(screen, &bg, getColor(30, 80, 230));
+    SDL_Rect border = { (Sint16)mx, (Sint16)my, (Uint16)mw, 2 };
+    SDL_FillRect(screen, &border, getColor(255,255,255));
     for (int i = 0; i < MAX_SNAKES; i++) {
         if (!snakes[i].alive) continue;
         if (snakes[i].body.empty()) continue;
-        int px = mx + (int)(snakes[i].body[0].x / WORLD_RADIUS * mr);
-        int py = my + (int)(snakes[i].body[0].y / WORLD_RADIUS * mr);
+        int px = mx + (int)((snakes[i].body[0].x / WORLD_RADIUS + 1.0f) / 2.0f * mw);
+        int py = my + (int)((snakes[i].body[0].y / WORLD_RADIUS + 1.0f) / 2.0f * mh);
         Uint32 c = snakes[i].isPlayer ? getColor(0,255,0) : getColor(255,255,255);
         SDL_Rect r = { (Sint16)(px-2), (Sint16)(py-2), 4, 4 };
         SDL_FillRect(screen, &r, c);
@@ -121,7 +139,7 @@ void Game::drawHUD() {
 }
 
 void Game::renderMenu() {
-    SDL_FillRect(screen, NULL, getColor(10,10,20));
+    SDL_FillRect(screen, NULL, getColor(10,60,200));
     drawText("SLIPS3", screen->w/2 - 80, screen->h/2 - 80, 0, 255, 150, true);
     drawText("PRESSIONE START PARA JOGAR", screen->w/2 - 180, screen->h/2 + 20, 255, 255, 255, true);
 }
@@ -144,6 +162,5 @@ void Game::render() {
         drawMinimap();
         drawHUD();
     }
-    // ISSO AQUI FALTAVA - sem isso fica tela preta pra sempre
     SDL_Flip(screen);
 }
