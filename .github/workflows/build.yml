@@ -1,0 +1,28 @@
+name: Compilar slips3
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: ps3dev/ps3toolchain:latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compilar
+        run: |
+          export PS3DEV=/usr/local/ps3dev
+          export PSL1GHT=/usr/local/ps3dev/ppu
+          export PATH=$PATH:/usr/local/ps3dev/ppu/bin:/usr/local/ps3dev/bin
+          ls /usr/local/ps3dev/ppu/include/io/pad.h
+          make
+          ls -lh *.pkg
+          mv *.pkg slips3.pkg
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: slips3-pkg
+          path: slips3.pkg
