@@ -12,6 +12,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Procurar ferramentas
+        run: |
+          find / \( -name "sfo*" -o -name "make_pkg*" -o -name "make_self*" \) -not -path "*/proc/*" 2>/dev/null || true
+
       - name: Compilar
         run: |
           export PS3DEV=/usr/local/ps3dev
