@@ -5,7 +5,7 @@ include $(PSL1GHT)/ppu_rules
 
 .DEFAULT_GOAL := all
 
-TARGET    := slips3
+TARGET    := cobra
 TITLE     := Cobra Arena
 APPID     := COBR00001
 CONTENTID := UP0001-$(APPID)_00-0000000000000000
