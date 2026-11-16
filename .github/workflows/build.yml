@@ -12,19 +12,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Diagnostico
-        run: |
-          find / -name "make_pkg*" -not -path "*/proc/*" 2>/dev/null || true
-          python3 /usr/local/ps3dev/bin/sfo.py --help || true
-
       - name: Compilar
-        run: |
-          export PS3DEV=/usr/local/ps3dev
-          export PSL1GHT=/usr/local/ps3dev/ppu
-          export PATH=$PATH:/usr/local/ps3dev/ppu/bin:/usr/local/ps3dev/bin
-          make
+        run: make
 
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          name: slips3-pkg
-          path: slips3.pkg
+          name: slips3-saida
+          path: |
+            slips3.elf
+            slips3.self
+            slips3.pkg
+          if-no-files-found: ignore
