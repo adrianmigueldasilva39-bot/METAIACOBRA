@@ -27,13 +27,14 @@ $(TARGET).elf: $(OBJS)
 	$(CXX) $(OBJS) $(LDFLAGS) $(LIBS) -o $@
 
 PARAM.SFO: sfo.xml
-	python3 $(PSL1GHT)/bin/sfo.py sfo.xml PARAM.SFO || \
-	python3 $(PS3DEV)/ppu/bin/sfo.py sfo.xml PARAM.SFO || \
-	$(PSL1GHT)/bin/sfo sfo.xml PARAM.SFO
+	python3 $(PS3DEV)/bin/sfo.py sfo.xml PARAM.SFO
 
-$(TARGET).pkg: $(TARGET).elf PARAM.SFO
-	$(PSL1GHT)/bin/make_self $(TARGET).elf $(TARGET).self || cp $(TARGET).elf $(TARGET).self
-	python3 $(PS3DEV)/ppu/bin/make_pkg.py --id $(APPID) --title "$(TITLE)" --sfo PARAM.SFO $(TARGET).self $(TARGET).pkg || touch $(TARGET).pkg
+$(TARGET).self: $(TARGET).elf
+	$(PS3DEV)/bin/make_self $(TARGET).elf $(TARGET).self
+
+# make_pkg: caminho ainda não confirmado, ver a saída do "Procurar ferramentas"
+$(TARGET).pkg: $(TARGET).self PARAM.SFO
+	python3 $(PS3DEV)/bin/make_pkg.py --id $(APPID) --title "$(TITLE)" --sfo PARAM.SFO $(TARGET).self $(TARGET).pkg
 
 clean:
 	rm -f $(OBJS) $(TARGET).elf $(TARGET).self $(TARGET).pkg PARAM.SFO
