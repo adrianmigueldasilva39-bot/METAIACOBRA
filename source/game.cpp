@@ -105,16 +105,16 @@ void Game::spawnSnake(Snake& s, bool isPlayer, float x, float y) {
     s.alive = true;
     s.angle = (float)rand() / (float)RAND_MAX * 6.28318f;
     s.targetAngle = s.angle;
-    s.baseSpeed = 145.0f;
-    s.boostSpeed = 295.0f;
-    s.speed = 145.0f;
+    s.baseSpeed = 310.0f;
+    s.boostSpeed = 580.0f;
+    s.speed = 310.0f;
     s.radius = 18.0f;
     s.length = 28;
     s.score = 100;
     s.kills = 0;
     s.boostTimer = 0;
     s.boosting = false;
-    s.turnSpeed = 4.2f;
+    s.turnSpeed = 6.0f;
     s.aiTimer = 0;
     s.aiTarget = Vec2(x, y);
     s.name = isPlayer ? "VOCE" : "BOT";
@@ -210,7 +210,7 @@ void Game::spawnParticle(float x, float y, Uint8 r, Uint8 g, Uint8 b) {
 }
 
 void Game::spawnKillOrbs(Snake& s) {
-    for (size_t i = 0; i < s.body.size(); i += 2) {
+    for (size_t i = 0; i < s.body.size(); i++) {
         int idx = rand() % MAX_FOOD;
         int pat = (int)((i / 4) % s.skinLen);
         foods[idx].pos = Vec2(s.body[i].x + (rand() % 40 - 20), s.body[i].y + (rand() % 40 - 20));
@@ -334,7 +334,10 @@ void Game::updatePlayer(Snake& s, float dt, float ax, float ay, bool boostBtn) {
 }
 
 void Game::updateBot(Snake& s, float dt) {
+    s.baseSpeed = 310.0f;
+    s.boostSpeed = 580.0f;
     s.aiTimer -= dt;
+    bool wantCut = false;
     if (s.aiTimer <= 0) {
         s.aiTimer = 0.5f + (rand() % 10) / 10.0f;
         Vec2 head = s.body.empty() ? Vec2(0, 0) : s.body[0];
@@ -371,6 +374,7 @@ void Game::updateBot(Snake& s, float dt) {
                                 target.body[0].y + sinf(target.angle) * 180.0f);
                 if (rand() % 100 < 45) {
                     s.aiTarget = cut;
+                    wantCut = true;
                 }
             }
             if (rand() % 100 < 20) {
@@ -398,11 +402,16 @@ void Game::updateBot(Snake& s, float dt) {
         if (avoidX != 0 || avoidY != 0) {
             s.aiTarget = Vec2(s.body[0].x + avoidX * 3.0f, s.body[0].y + avoidY * 3.0f);
         }
+        s.boosting = wantCut;
     }
     s.targetAngle = angleTo(s.body[0].x, s.body[0].y, s.aiTarget.x, s.aiTarget.y);
     float diff = normalizeAngle(s.targetAngle - s.angle);
     s.angle += diff * s.turnSpeed * dt;
-    s.speed = s.baseSpeed;
+    if (s.boosting && s.length > 30) {
+        s.speed = s.boostSpeed;
+    } else {
+        s.speed = s.baseSpeed;
+    }
     Vec2 head = s.path.empty() ? s.body[0] : s.path[0];
     float nx = head.x + cosf(s.angle) * s.speed * dt;
     float ny = head.y + sinf(s.angle) * s.speed * dt;
@@ -449,8 +458,9 @@ void Game::checkCollisions() {
         for (int j = 0; j < MAX_SNAKES; j++) {
             if (i == j) continue;
             if (!snakes[j].alive) continue;
-            for (size_t k = 4; k < snakes[j].body.size(); k += 2) {
-                if (dist(snakes[i].body[0].x, snakes[i].body[0].y, snakes[j].body[k].x, snakes[j].body[k].y) < snakes[i].radius * 0.85f) {
+            float hitDist = (snakes[i].radius + snakes[j].radius) * 0.85f;
+            for (size_t k = 4; k < snakes[j].body.size(); k++) {
+                if (dist(snakes[i].body[0].x, snakes[i].body[0].y, snakes[j].body[k].x, snakes[j].body[k].y) < hitDist) {
                     killSnake(i, j);
                     break;
                 }
@@ -473,7 +483,13 @@ void Game::update(float dt) {
 void Game::run() {
     padInfo padinfo;
     padData paddata;
+    Uint32 lastTime = SDL_GetTicks();
     while (running) {
+        Uint32 now = SDL_GetTicks();
+        float dt = (now - lastTime) / 1000.0f;
+        lastTime = now;
+        if (dt > 0.05f) dt = 0.05f;
+        if (dt < 0.0f) dt = 0.0f;
         sysUtilCheckCallback();
         ioPadGetInfo(&padinfo);
         float ax = 0, ay = 0;
@@ -498,13 +514,11 @@ void Game::run() {
         }
         if (select) break;
         if (gameState == 1) {
-            float dt = 1.0f / 60.0f;
             if (snakes[0].alive) {
                 updatePlayer(snakes[0], dt, ax, ay, boost);
             }
             update(dt);
         } else if (gameState == 2) {
-            float dt = 1.0f / 60.0f;
             updateFoods(dt);
             updateParticles(dt);
             for (int i = 1; i < MAX_SNAKES; i++) {
@@ -519,6 +533,5 @@ void Game::run() {
         xPressedLast = xBtn;
         render();
         frameCount++;
-        SDL_Delay(16);
     }
 }
