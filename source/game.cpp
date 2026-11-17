@@ -2,32 +2,32 @@
 #include "game.h"
 #include <stdlib.h>
 #include <math.h>
-
-vector<Snake> cobras;
-vector<Food> comidas;
-Snake player;
-int sua_posicao = 1;
-int game_tick = 0;
+#include <stdio.h>
 
 #define LARGURA 60
 #define ALTURA 40
 
-void spawn_comida(int x, int y) {
+bool Game::init() {
+    init_game();
+    return true;
+}
+
+void Game::spawn_comida(int x, int y) {
     Food f; f.x = x; f.y = y;
     comidas.push_back(f);
 }
 
-Food comida_mais_perta(Pos p) {
+Food Game::comida_mais_perta(Pos p) {
     Food melhor = comidas[0];
     int menor = 999999;
-    for (auto &f : comidas) {
-        int d = abs(f.x - p.x) + abs(f.y - p.y);
-        if (d < menor) { menor = d; melhor = f; }
+    for (size_t i = 0; i < comidas.size(); i++) {
+        int d = abs(comidas[i].x - p.x) + abs(comidas[i].y - p.y);
+        if (d < menor) { menor = d; melhor = comidas[i]; }
     }
     return melhor;
 }
 
-bool vai_bater_parede(Snake &s) {
+bool Game::vai_bater_parede(Snake &s) {
     Pos prox = s.corpo[0];
     if (s.dir == 0) prox.y--;
     if (s.dir == 1) prox.y++;
@@ -37,24 +37,24 @@ bool vai_bater_parede(Snake &s) {
     return false;
 }
 
-bool vai_bater_corpo(Snake &s) {
+bool Game::vai_bater_corpo(Snake &s) {
     Pos prox = s.corpo[0];
     if (s.dir == 0) prox.y--;
     if (s.dir == 1) prox.y++;
     if (s.dir == 2) prox.x--;
     if (s.dir == 3) prox.x++;
-    for (int i = 1; i < (int)s.corpo.size(); i++) {
+    for (size_t i = 1; i < s.corpo.size(); i++) {
         if (prox.x == s.corpo[i].x && prox.y == s.corpo[i].y) return true;
     }
     return false;
 }
 
-int virar_90(Snake &s) {
+int Game::virar_90(Snake &s) {
     if (s.dir == 0 || s.dir == 1) return (rand() % 2 == 0) ? 2 : 3;
     else return (rand() % 2 == 0) ? 0 : 1;
 }
 
-void update_bot(Snake &bot) {
+void Game::update_bot(Snake &bot) {
     if (!bot.vivo || comidas.empty()) return;
     Food alvo = comida_mais_perta(bot.corpo[0]);
     int dx = alvo.x - bot.corpo[0].x;
@@ -73,24 +73,25 @@ void update_bot(Snake &bot) {
     }
 }
 
-void matar_bot(int idx) {
-    for (auto &p : cobras[idx].corpo) {
-        spawn_comida(p.x, p.y);
+void Game::matar_bot(int idx) {
+    for (size_t i = 0; i < cobras[idx].corpo.size(); i++) {
+        spawn_comida(cobras[idx].corpo[i].x, cobras[idx].corpo[i].y);
     }
     cobras[idx].vivo = false;
     cobras[idx].corpo.clear();
 }
 
-int calcular_rank() {
+int Game::calcular_rank() {
     int rank = 1;
-    for (auto &b : cobras) {
-        if (b.isPlayer) continue;
-        if (b.vivo && b.pontos > player.pontos) rank++;
+    for (size_t i = 0; i < cobras.size(); i++) {
+        if (cobras[i].isPlayer) continue;
+        if (cobras[i].vivo && cobras[i].pontos > player.pontos) rank++;
     }
     return rank;
 }
 
-void mover_cobra(Snake &s) {
+void Game::mover_cobra(Snake &s) {
+    if (s.corpo.empty()) return;
     Pos nova = s.corpo[0];
     if (s.dir == 0) nova.y--;
     if (s.dir == 1) nova.y++;
@@ -98,7 +99,7 @@ void mover_cobra(Snake &s) {
     if (s.dir == 3) nova.x++;
     s.corpo.insert(s.corpo.begin(), nova);
     bool comeu = false;
-    for (int i = 0; i < (int)comidas.size(); i++) {
+    for (size_t i = 0; i < comidas.size(); i++) {
         if (comidas[i].x == nova.x && comidas[i].y == nova.y) {
             comidas.erase(comidas.begin() + i);
             s.pontos += 10;
@@ -110,35 +111,36 @@ void mover_cobra(Snake &s) {
     if (!comeu) s.corpo.pop_back();
 }
 
-void update_game() {
+void Game::update_game() {
     game_tick++;
     if (game_tick % 6 != 0) return;
-    for (auto &b : cobras) {
-        if (!b.isPlayer && b.vivo) {
-            update_bot(b);
-        }
+    for (size_t i = 0; i < cobras.size(); i++) {
+        if (!cobras[i].isPlayer && cobras[i].vivo) update_bot(cobras[i]);
     }
-    for (auto &b : cobras) {
-        if (b.vivo) mover_cobra(b);
+    for (size_t i = 0; i < cobras.size(); i++) {
+        if (cobras[i].vivo) mover_cobra(cobras[i]);
     }
     if (player.vivo) mover_cobra(player);
-    for (int i = 0; i < (int)cobras.size(); i++) {
+    for (size_t i = 0; i < cobras.size(); i++) {
         if (!cobras[i].vivo) continue;
-        for (int j = 0; j < (int)cobras.size(); j++) {
+        for (size_t j = 0; j < cobras.size(); j++) {
             if (i == j || !cobras[j].vivo) continue;
+            if (cobras[i].corpo.empty() || cobras[j].corpo.empty()) continue;
             Pos cabeca = cobras[i].corpo[0];
-            for (int k = 1; k < (int)cobras[j].corpo.size(); k++) {
+            for (size_t k = 1; k < cobras[j].corpo.size(); k++) {
                 if (cabeca.x == cobras[j].corpo[k].x && cabeca.y == cobras[j].corpo[k].y) {
                     matar_bot(i);
                     break;
                 }
             }
+            if (!cobras[i].vivo) break;
         }
     }
-    for (int i = 0; i < (int)cobras.size(); i++) {
+    for (size_t i = 0; i < cobras.size(); i++) {
         if (!cobras[i].vivo || cobras[i].isPlayer) continue;
+        if (cobras[i].corpo.empty()) continue;
         Pos cabeca = cobras[i].corpo[0];
-        for (int k = 1; k < (int)player.corpo.size(); k++) {
+        for (size_t k = 1; k < player.corpo.size(); k++) {
             if (cabeca.x == player.corpo[k].x && cabeca.y == player.corpo[k].y) {
                 matar_bot(i);
                 player.pontos += 50;
@@ -146,22 +148,24 @@ void update_game() {
             }
         }
     }
-    if (player.vivo) {
+    if (player.vivo && !player.corpo.empty()) {
         Pos cabeca = player.corpo[0];
-        for (auto &b : cobras) {
-            if (b.isPlayer || !b.vivo) continue;
-            for (auto &p : b.corpo) {
-                if (cabeca.x == p.x && cabeca.y == p.y) player.vivo = false;
+        for (size_t i = 0; i < cobras.size(); i++) {
+            if (cobras[i].isPlayer || !cobras[i].vivo) continue;
+            for (size_t k = 0; k < cobras[i].corpo.size(); k++) {
+                if (cabeca.x == cobras[i].corpo[k].x && cabeca.y == cobras[i].corpo[k].y) player.vivo = false;
             }
         }
     }
     sua_posicao = calcular_rank();
 }
 
-void init_game() {
+void Game::init_game() {
     cobras.clear();
     comidas.clear();
     player.corpo.clear();
+    sua_posicao = 1;
+    game_tick = 0;
     player.corpo.push_back({30, 20});
     player.corpo.push_back({29, 20});
     player.corpo.push_back({28, 20});
@@ -186,5 +190,12 @@ void init_game() {
     }
     for (int i = 0; i < 30; i++) {
         spawn_comida(rand() % LARGURA, rand() % ALTURA);
+    }
+}
+
+void Game::run() {
+    while (1) {
+        update_game();
+        render_game();
     }
 }
