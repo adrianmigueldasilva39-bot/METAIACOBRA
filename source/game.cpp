@@ -1,544 +1,190 @@
+// game.cpp
 #include "game.h"
-#include <io/pad.h>
-#include <sysutil/sysutil.h>
-#include <sys/process.h>
-#include <cstdio>
+#include <stdlib.h>
+#include <math.h>
 
-Game::Game()
-    : screen(NULL), running(false), gameState(1), cameraX(0), cameraY(0),
-      zoom(0.95f), targetZoom(0.95f), frameCount(0), deathTimer(0), xPressedLast(false) {
+vector<Snake> cobras;
+vector<Food> comidas;
+Snake player;
+int sua_posicao = 1;
+int game_tick = 0;
+
+#define LARGURA 60
+#define ALTURA 40
+
+void spawn_comida(int x, int y) {
+    Food f; f.x = x; f.y = y;
+    comidas.push_back(f);
 }
 
-Game::~Game() {
-}
-
-bool Game::init() {
-    if (SDL_Init(SDL_INIT_VIDEO) < 0) {
-        return false;
+Food comida_mais_perta(Pos p) {
+    Food melhor = comidas[0];
+    int menor = 999999;
+    for (auto &f : comidas) {
+        int d = abs(f.x - p.x) + abs(f.y - p.y);
+        if (d < menor) { menor = d; melhor = f; }
     }
-    ioPadInit(7);
-    screen = SDL_SetVideoMode(1280, 720, 32, SDL_SWSURFACE | SDL_FULLSCREEN);
-    if (!screen) {
-        return false;
+    return melhor;
+}
+
+bool vai_bater_parede(Snake &s) {
+    Pos prox = s.corpo[0];
+    if (s.dir == 0) prox.y--;
+    if (s.dir == 1) prox.y++;
+    if (s.dir == 2) prox.x--;
+    if (s.dir == 3) prox.x++;
+    if (prox.x < 0 || prox.x >= LARGURA || prox.y < 0 || prox.y >= ALTURA) return true;
+    return false;
+}
+
+bool vai_bater_corpo(Snake &s) {
+    Pos prox = s.corpo[0];
+    if (s.dir == 0) prox.y--;
+    if (s.dir == 1) prox.y++;
+    if (s.dir == 2) prox.x--;
+    if (s.dir == 3) prox.x++;
+    for (int i = 1; i < (int)s.corpo.size(); i++) {
+        if (prox.x == s.corpo[i].x && prox.y == s.corpo[i].y) return true;
     }
-    SDL_ShowCursor(SDL_DISABLE);
-    srand(12345);
-    initWorld();
-    running = true;
-    gameState = 1;
-    return true;
+    return false;
 }
 
-void Game::shutdown() {
-    ioPadEnd();
-    SDL_Quit();
-    screen = NULL;
+int virar_90(Snake &s) {
+    if (s.dir == 0 || s.dir == 1) return (rand() % 2 == 0) ? 2 : 3;
+    else return (rand() % 2 == 0) ? 0 : 1;
 }
 
-float Game::dist(float x1, float y1, float x2, float y2) {
-    float dx = x1 - x2;
-    float dy = y1 - y2;
-    return sqrtf(dx * dx + dy * dy);
-}
-
-float Game::angleTo(float x1, float y1, float x2, float y2) {
-    return atan2f(y2 - y1, x2 - x1);
-}
-
-float Game::normalizeAngle(float a) {
-    while (a > 3.14159f) a -= 6.28318f;
-    while (a < -3.14159f) a += 6.28318f;
-    return a;
-}
-
-bool Game::isInsideWorld(float x, float y) {
-    return dist(x, y, 0, 0) < WORLD_RADIUS;
-}
-
-Vec2 Game::worldToScreen(float wx, float wy) {
-    return Vec2((wx - cameraX) * zoom + screen->w / 2, (wy - cameraY) * zoom + screen->h / 2);
-}
-
-Uint32 Game::getColor(Uint8 r, Uint8 g, Uint8 b) {
-    return SDL_MapRGB(screen->format, r, g, b);
-}
-
-void Game::setSkin(Snake& s, int skin) {
-    static const Uint8 pal[8][3][3] = {
-        {{0, 255, 140}, {0, 200, 110}, {0, 255, 180}},
-        {{255, 255, 255}, {180, 180, 180}, {255, 255, 255}},
-        {{0, 220, 90}, {255, 255, 255}, {0, 220, 90}},
-        {{255, 80, 180}, {80, 200, 255}, {255, 220, 0}},
-        {{255, 50, 50}, {255, 255, 255}, {255, 50, 50}},
-        {{255, 120, 0}, {255, 220, 0}, {255, 0, 180}},
-        {{120, 80, 255}, {255, 255, 255}, {0, 200, 255}},
-        {{255, 200, 0}, {255, 80, 0}, {255, 255, 0}}
-    };
-    static const Uint8 rainbow[6][3] = {
-        {255, 0, 0}, {255, 140, 0}, {255, 255, 0},
-        {0, 255, 0}, {0, 100, 255}, {150, 0, 255}
-    };
-    if (skin < 0 || skin > 7) skin = 0;
-    s.skin = skin;
-    if (s.isPlayer) {
-        skin = 0;
-        s.skin = 0;
-    }
-    if (skin == 5) {
-        s.skinLen = 6;
-        for (int i = 0; i < 10; i++) {
-            s.cols[i][0] = rainbow[i % 6][0];
-            s.cols[i][1] = rainbow[i % 6][1];
-            s.cols[i][2] = rainbow[i % 6][2];
-        }
+void update_bot(Snake &bot) {
+    if (!bot.vivo || comidas.empty()) return;
+    Food alvo = comida_mais_perta(bot.corpo[0]);
+    int dx = alvo.x - bot.corpo[0].x;
+    int dy = alvo.y - bot.corpo[0].y;
+    if (abs(dx) > abs(dy)) {
+        int nova = (dx > 0) ? 3 : 2;
+        if (!((bot.dir == 3 && nova == 2) || (bot.dir == 2 && nova == 3)))
+            bot.dir = nova;
     } else {
-        s.skinLen = 3;
-        for (int i = 0; i < 10; i++) {
-            s.cols[i][0] = pal[skin][i % 3][0];
-            s.cols[i][1] = pal[skin][i % 3][1];
-            s.cols[i][2] = pal[skin][i % 3][2];
-        }
+        int nova = (dy > 0) ? 1 : 0;
+        if (!((bot.dir == 1 && nova == 0) || (bot.dir == 0 && nova == 1)))
+            bot.dir = nova;
+    }
+    if (vai_bater_parede(bot) || vai_bater_corpo(bot)) {
+        bot.dir = virar_90(bot);
     }
 }
 
-void Game::spawnSnake(Snake& s, bool isPlayer, float x, float y) {
-    s.isPlayer = isPlayer;
-    s.alive = true;
-    s.angle = (float)rand() / (float)RAND_MAX * 6.28318f;
-    s.targetAngle = s.angle;
-    s.baseSpeed = 310.0f;
-    s.boostSpeed = 580.0f;
-    s.speed = 310.0f;
-    s.radius = 18.0f;
-    s.length = 28;
-    s.score = 100;
-    s.kills = 0;
-    s.boostTimer = 0;
-    s.boosting = false;
-    s.turnSpeed = 6.0f;
-    s.aiTimer = 0;
-    s.aiTarget = Vec2(x, y);
-    s.name = isPlayer ? "VOCE" : "BOT";
-    setSkin(s, rand() % 8);
-    s.body.clear();
-    s.path.clear();
-    float spacing = s.radius * 0.65f;
-    for (int i = 0; i < 400; i++) {
-        float px = x - cosf(s.angle) * spacing * i;
-        float py = y - sinf(s.angle) * spacing * i;
-        s.path.push_back(Vec2(px, py));
+void matar_bot(int idx) {
+    for (auto &p : cobras[idx].corpo) {
+        spawn_comida(p.x, p.y);
     }
-    rebuildBodyFromPath(s);
+    cobras[idx].vivo = false;
+    cobras[idx].corpo.clear();
 }
 
-void Game::rebuildBodyFromPath(Snake& s) {
-    float spacing = s.radius * 0.65f;
-    s.body.clear();
-    if (s.path.empty()) return;
-    s.body.push_back(s.path[0]);
-    Vec2 last = s.path[0];
-    float acc = 0;
-    for (size_t i = 1; i < s.path.size() && (int)s.body.size() < (int)s.length; i++) {
-        float d = dist(last.x, last.y, s.path[i].x, s.path[i].y);
-        acc += d;
-        last = s.path[i];
-        if (acc >= spacing) {
-            s.body.push_back(s.path[i]);
-            acc = 0;
-        }
+int calcular_rank() {
+    int rank = 1;
+    for (auto &b : cobras) {
+        if (b.isPlayer) continue;
+        if (b.vivo && b.pontos > player.pontos) rank++;
     }
-    float maxPathLen = spacing * (s.length + 20);
-    float total = 0;
-    size_t cut = s.path.size();
-    for (size_t i = 1; i < s.path.size(); i++) {
-        total += dist(s.path[i - 1].x, s.path[i - 1].y, s.path[i].x, s.path[i].y);
-        if (total > maxPathLen) {
-            cut = i;
+    return rank;
+}
+
+void mover_cobra(Snake &s) {
+    Pos nova = s.corpo[0];
+    if (s.dir == 0) nova.y--;
+    if (s.dir == 1) nova.y++;
+    if (s.dir == 2) nova.x--;
+    if (s.dir == 3) nova.x++;
+    s.corpo.insert(s.corpo.begin(), nova);
+    bool comeu = false;
+    for (int i = 0; i < (int)comidas.size(); i++) {
+        if (comidas[i].x == nova.x && comidas[i].y == nova.y) {
+            comidas.erase(comidas.begin() + i);
+            s.pontos += 10;
+            spawn_comida(rand() % LARGURA, rand() % ALTURA);
+            comeu = true;
             break;
         }
     }
-    if (cut < s.path.size()) {
-        s.path.erase(s.path.begin() + (int)cut, s.path.end());
-    }
+    if (!comeu) s.corpo.pop_back();
 }
 
-void Game::spawnFood(int index, bool anywhere) {
-    float a = (float)rand() / (float)RAND_MAX * 6.28318f;
-    float d = (float)rand() / (float)RAND_MAX * (anywhere ? WORLD_RADIUS - 200.0f : 1200.0f);
-    Vec2 p;
-    if (anywhere) {
-        p = Vec2(cosf(a) * d, sinf(a) * d);
-    } else {
-        if (!snakes[0].body.empty()) {
-            p = Vec2(snakes[0].body[0].x + cosf(a) * d, snakes[0].body[0].y + sinf(a) * d);
-        } else {
-            p = Vec2(cosf(a) * d, sinf(a) * d);
-        }
-        if (!isInsideWorld(p.x, p.y)) {
-            p = Vec2(cosf(a) * 500.0f, sinf(a) * 500.0f);
+void update_game() {
+    game_tick++;
+    if (game_tick % 6 != 0) return;
+    for (auto &b : cobras) {
+        if (!b.isPlayer && b.vivo) {
+            update_bot(b);
         }
     }
-    static const Uint8 fc[8][3] = {
-        {255, 80, 180}, {80, 255, 180}, {255, 220, 0}, {80, 200, 255},
-        {255, 120, 0}, {180, 80, 255}, {255, 255, 255}, {255, 0, 80}
-    };
-    int c = rand() % 8;
-    foods[index].pos = p;
-    foods[index].big = (rand() % 12 == 0);
-    foods[index].radius = foods[index].big ? 10.0f + (rand() % 5) : 4.0f + (rand() % 4);
-    foods[index].r = fc[c][0];
-    foods[index].g = fc[c][1];
-    foods[index].b = fc[c][2];
-    foods[index].pulse = (float)rand();
-    foods[index].active = true;
-}
-
-void Game::spawnParticle(float x, float y, Uint8 r, Uint8 g, Uint8 b) {
-    for (int i = 0; i < MAX_PARTICLES; i++) {
-        if (!particles[i].active) {
-            particles[i].active = true;
-            particles[i].pos = Vec2(x, y);
-            particles[i].vel = Vec2((float)(rand() % 160 - 80), (float)(rand() % 160 - 80));
-            particles[i].life = 0.6f;
-            particles[i].maxLife = 0.6f;
-            particles[i].r = r;
-            particles[i].g = g;
-            particles[i].b = b;
-            particles[i].size = 4.0f + (rand() % 5);
-            break;
-        }
+    for (auto &b : cobras) {
+        if (b.vivo) mover_cobra(b);
     }
-}
-
-void Game::spawnKillOrbs(Snake& s) {
-    for (size_t i = 0; i < s.body.size(); i++) {
-        int idx = rand() % MAX_FOOD;
-        int pat = (int)((i / 4) % s.skinLen);
-        foods[idx].pos = Vec2(s.body[i].x + (rand() % 40 - 20), s.body[i].y + (rand() % 40 - 20));
-        foods[idx].radius = 7.0f + (rand() % 5);
-        foods[idx].r = s.cols[pat][0];
-        foods[idx].g = s.cols[pat][1];
-        foods[idx].b = s.cols[pat][2];
-        foods[idx].active = true;
-        foods[idx].big = true;
-        foods[idx].pulse = (float)rand();
-    }
-}
-
-void Game::initWorld() {
-    for (int i = 0; i < MAX_FOOD; i++) {
-        spawnFood(i, true);
-    }
-    for (int i = 0; i < MAX_PARTICLES; i++) {
-        particles[i].active = false;
-    }
-    for (int i = 0; i < MAX_SNAKES; i++) {
-        float a = (float)i / (float)MAX_SNAKES * 6.28318f;
-        float d = 900.0f + (rand() % 3000);
-        spawnSnake(snakes[i], i == 0, cosf(a) * d, sinf(a) * d);
-    }
-    spawnSnake(snakes[0], true, 0, 0);
-    cameraX = 0;
-    cameraY = 0;
-    targetZoom = 0.95f;
-    zoom = 0.95f;
-    deathTimer = 0;
-    gameState = 1;
-}
-
-void Game::resetPlayer() {
-    spawnSnake(snakes[0], true, 0, 0);
-    cameraX = 0;
-    cameraY = 0;
-    targetZoom = 0.95f;
-    zoom = 0.95f;
-    deathTimer = 0;
-    gameState = 1;
-}
-
-void Game::addScore(Snake& s, int amount) {
-    s.score += amount;
-    s.length += amount / 18;
-    if (s.length > 420) s.length = 420;
-    if (s.isPlayer) {
-        targetZoom = 0.95f - (snakes[0].length / 420.0f) * 0.45f;
-        if (targetZoom < 0.50f) targetZoom = 0.50f;
-    }
-}
-
-void Game::eatFood(Snake& s, int index) {
-    addScore(s, foods[index].big ? 25 : 8);
-    spawnFood(index, false);
-}
-
-void Game::killSnake(int index, int killerIndex) {
-    if (!snakes[index].alive) return;
-    snakes[index].alive = false;
-    spawnKillOrbs(snakes[index]);
-    for (size_t i = 0; i < snakes[index].body.size(); i += 3) {
-        spawnParticle(snakes[index].body[i].x, snakes[index].body[i].y,
-                      snakes[index].cols[0][0], snakes[index].cols[0][1], snakes[index].cols[0][2]);
-    }
-    if (killerIndex >= 0 && killerIndex < MAX_SNAKES) {
-        snakes[killerIndex].kills++;
-        addScore(snakes[killerIndex], 150);
-    }
-    if (index == 0) {
-        deathTimer = 2.0f;
-        gameState = 2;
-        return;
-    }
-    float a = (float)rand() / (float)RAND_MAX * 6.28318f;
-    float d = 900.0f + (rand() % 4000);
-    spawnSnake(snakes[index], false, cosf(a) * d, sinf(a) * d);
-}
-
-void Game::updatePlayer(Snake& s, float dt, float ax, float ay, bool boostBtn) {
-    if (ax != 0 || ay != 0) {
-        s.targetAngle = atan2f(ay, ax);
-    }
-    float diff = normalizeAngle(s.targetAngle - s.angle);
-    s.angle += diff * s.turnSpeed * dt;
-    s.boosting = boostBtn && s.length > 30;
-    s.speed = s.boosting ? s.boostSpeed : s.baseSpeed;
-    if (s.boosting) {
-        s.boostTimer += dt;
-        if (s.boostTimer > 0.25f) {
-            s.boostTimer = 0;
-            s.length -= 1;
-            if (s.length < 10) s.length = 10;
-            int idx = rand() % MAX_FOOD;
-            if (!s.path.empty()) {
-                foods[idx].pos = Vec2(s.path.back().x, s.path.back().y);
-            }
-            foods[idx].radius = 6;
-            foods[idx].r = s.cols[0][0];
-            foods[idx].g = s.cols[0][1];
-            foods[idx].b = s.cols[0][2];
-            foods[idx].active = true;
-            foods[idx].big = false;
-            foods[idx].pulse = 0;
-        }
-    }
-    Vec2 head = s.path.empty() ? Vec2(0, 0) : s.path[0];
-    float nx = head.x + cosf(s.angle) * s.speed * dt;
-    float ny = head.y + sinf(s.angle) * s.speed * dt;
-    if (!isInsideWorld(nx, ny)) {
-        killSnake(0, -1);
-        return;
-    }
-    s.path.insert(s.path.begin(), Vec2(nx, ny));
-    rebuildBodyFromPath(s);
-}
-
-void Game::updateBot(Snake& s, float dt) {
-    s.baseSpeed = 310.0f;
-    s.boostSpeed = 580.0f;
-    s.aiTimer -= dt;
-    bool wantCut = false;
-    if (s.aiTimer <= 0) {
-        s.aiTimer = 0.5f + (rand() % 10) / 10.0f;
-        Vec2 head = s.body.empty() ? Vec2(0, 0) : s.body[0];
-        float centerDist = dist(head.x, head.y, 0, 0);
-        if (centerDist > WORLD_RADIUS - 800.0f) {
-            s.aiTarget = Vec2(0, 0);
-        } else {
-            float bestDist = 1e9f;
-            Vec2 bestFood = head;
-            for (int i = 0; i < MAX_FOOD; i++) {
-                if (!foods[i].active) continue;
-                float dd = dist(head.x, head.y, foods[i].pos.x, foods[i].pos.y);
-                if (dd < bestDist) {
-                    bestDist = dd;
-                    bestFood = foods[i].pos;
-                }
-            }
-            s.aiTarget = bestFood;
-            int nearest = -1;
-            float nearestDist = 1e9f;
-            for (int j = 0; j < MAX_SNAKES; j++) {
-                if (&snakes[j] == &s) continue;
-                if (!snakes[j].alive || snakes[j].body.empty()) continue;
-                if (snakes[j].score < s.score) continue;
-                float dd = dist(head.x, head.y, snakes[j].body[0].x, snakes[j].body[0].y);
-                if (dd < nearestDist) {
-                    nearestDist = dd;
-                    nearest = j;
-                }
-            }
-            if (nearest >= 0 && nearestDist < 600.0f) {
-                Snake& target = snakes[nearest];
-                Vec2 cut = Vec2(target.body[0].x + cosf(target.angle) * 180.0f,
-                                target.body[0].y + sinf(target.angle) * 180.0f);
-                if (rand() % 100 < 45) {
-                    s.aiTarget = cut;
-                    wantCut = true;
-                }
-            }
-            if (rand() % 100 < 20) {
-                float a = (float)rand() / (float)RAND_MAX * 6.28318f;
-                float d = 400.0f + (rand() % 1000);
-                s.aiTarget = Vec2(head.x + cosf(a) * d, head.y + sinf(a) * d);
-                if (!isInsideWorld(s.aiTarget.x, s.aiTarget.y)) {
-                    s.aiTarget = Vec2(0, 0);
-                }
-            }
-        }
-        s.boosting = wantCut;
-    }
-    // Desvio de perigo: TODOS OS FRAMES, fora do aiTimer
-    s.turnSpeed = 6.0f;
-    if (!s.body.empty()) {
-        Vec2 head = s.body[0];
-        float avoidX = 0;
-        float avoidY = 0;
-        bool danger = false;
-        for (int j = 0; j < MAX_SNAKES; j++) {
-            if (&snakes[j] == &s) continue;
-            if (!snakes[j].alive) continue;
-            for (size_t k = 0; k < snakes[j].body.size(); k++) {
-                float dd = dist(head.x, head.y, snakes[j].body[k].x, snakes[j].body[k].y);
-                if (dd < 240.0f) {
-                    danger = true;
-                    avoidX += (head.x - snakes[j].body[k].x);
-                    avoidY += (head.y - snakes[j].body[k].y);
-                }
-            }
-        }
-        if (danger && (avoidX != 0 || avoidY != 0)) {
-            s.aiTarget = Vec2(head.x + avoidX * 3.0f, head.y + avoidY * 3.0f);
-            s.turnSpeed = 8.5f;
-            s.boosting = false;
-        }
-    }
-    s.targetAngle = angleTo(s.body[0].x, s.body[0].y, s.aiTarget.x, s.aiTarget.y);
-    float diff = normalizeAngle(s.targetAngle - s.angle);
-    s.angle += diff * s.turnSpeed * dt;
-    if (s.boosting && s.length > 30) {
-        s.speed = s.boostSpeed;
-    } else {
-        s.speed = s.baseSpeed;
-    }
-    Vec2 head = s.path.empty() ? s.body[0] : s.path[0];
-    float nx = head.x + cosf(s.angle) * s.speed * dt;
-    float ny = head.y + sinf(s.angle) * s.speed * dt;
-    if (!isInsideWorld(nx, ny)) {
-        s.aiTarget = Vec2(0, 0);
-        return;
-    }
-    s.path.insert(s.path.begin(), Vec2(nx, ny));
-    rebuildBodyFromPath(s);
-}
-
-void Game::updateFoods(float dt) {
-    for (int i = 0; i < MAX_FOOD; i++) {
-        if (foods[i].active) foods[i].pulse += dt * 4.0f;
-    }
-}
-
-void Game::updateParticles(float dt) {
-    for (int i = 0; i < MAX_PARTICLES; i++) {
-        if (!particles[i].active) continue;
-        particles[i].pos.x += particles[i].vel.x * dt;
-        particles[i].pos.y += particles[i].vel.y * dt;
-        particles[i].life -= dt;
-        if (particles[i].life <= 0) particles[i].active = false;
-    }
-}
-
-void Game::updateCamera(float dt) {
-    if (snakes[0].body.empty()) return;
-    cameraX += (snakes[0].body[0].x - cameraX) * dt * 6.0f;
-    cameraY += (snakes[0].body[0].y - cameraY) * dt * 6.0f;
-    zoom += (targetZoom - zoom) * dt * 2.0f;
-}
-
-void Game::checkCollisions() {
-    for (int i = 0; i < MAX_SNAKES; i++) {
-        if (!snakes[i].alive || snakes[i].body.empty()) continue;
-        for (int f = 0; f < MAX_FOOD; f++) {
-            if (!foods[f].active) continue;
-            if (dist(snakes[i].body[0].x, snakes[i].body[0].y, foods[f].pos.x, foods[f].pos.y) < snakes[i].radius + foods[f].radius) {
-                eatFood(snakes[i], f);
-            }
-        }
-        for (int j = 0; j < MAX_SNAKES; j++) {
-            if (i == j) continue;
-            if (!snakes[j].alive) continue;
-            float hitDist = (snakes[i].radius + snakes[j].radius) * 0.85f;
-            for (size_t k = 4; k < snakes[j].body.size(); k++) {
-                if (dist(snakes[i].body[0].x, snakes[i].body[0].y, snakes[j].body[k].x, snakes[j].body[k].y) < hitDist) {
-                    killSnake(i, j);
+    if (player.vivo) mover_cobra(player);
+    for (int i = 0; i < (int)cobras.size(); i++) {
+        if (!cobras[i].vivo) continue;
+        for (int j = 0; j < (int)cobras.size(); j++) {
+            if (i == j || !cobras[j].vivo) continue;
+            Pos cabeca = cobras[i].corpo[0];
+            for (int k = 1; k < (int)cobras[j].corpo.size(); k++) {
+                if (cabeca.x == cobras[j].corpo[k].x && cabeca.y == cobras[j].corpo[k].y) {
+                    matar_bot(i);
                     break;
                 }
             }
-            if (!snakes[i].alive) break;
         }
     }
-}
-
-void Game::update(float dt) {
-    for (int i = 1; i < MAX_SNAKES; i++) {
-        if (snakes[i].alive) updateBot(snakes[i], dt);
+    for (int i = 0; i < (int)cobras.size(); i++) {
+        if (!cobras[i].vivo || cobras[i].isPlayer) continue;
+        Pos cabeca = cobras[i].corpo[0];
+        for (int k = 1; k < (int)player.corpo.size(); k++) {
+            if (cabeca.x == player.corpo[k].x && cabeca.y == player.corpo[k].y) {
+                matar_bot(i);
+                player.pontos += 50;
+                break;
+            }
+        }
     }
-    updateFoods(dt);
-    updateParticles(dt);
-    updateCamera(dt);
-    checkCollisions();
+    if (player.vivo) {
+        Pos cabeca = player.corpo[0];
+        for (auto &b : cobras) {
+            if (b.isPlayer || !b.vivo) continue;
+            for (auto &p : b.corpo) {
+                if (cabeca.x == p.x && cabeca.y == p.y) player.vivo = false;
+            }
+        }
+    }
+    sua_posicao = calcular_rank();
 }
 
-void Game::run() {
-    padInfo padinfo;
-    padData paddata;
-    Uint32 lastTime = SDL_GetTicks();
-    while (running) {
-        Uint32 now = SDL_GetTicks();
-        float dt = (now - lastTime) / 1000.0f;
-        lastTime = now;
-        if (dt > 0.05f) dt = 0.05f;
-        if (dt < 0.0f) dt = 0.0f;
-        sysUtilCheckCallback();
-        ioPadGetInfo(&padinfo);
-        float ax = 0, ay = 0;
-        bool boost = false;
-        bool xBtn = false;
-        bool select = false;
-        if (padinfo.status[0]) {
-            ioPadGetData(0, &paddata);
-            ax = ((float)paddata.ANA_L_H - 128) / 128.0f;
-            ay = ((float)paddata.ANA_L_V - 128) / 128.0f;
-            if (ax > -0.2f && ax < 0.2f) ax = 0;
-            if (ay > -0.2f && ay < 0.2f) ay = 0;
-            if (ax == 0 && ay == 0) {
-                if (paddata.BTN_LEFT) ax = -1;
-                if (paddata.BTN_RIGHT) ax = 1;
-                if (paddata.BTN_UP) ay = -1;
-                if (paddata.BTN_DOWN) ay = 1;
-            }
-            if (paddata.BTN_R1 || paddata.BTN_CROSS || paddata.BTN_L1) boost = true;
-            if (paddata.BTN_CROSS) xBtn = true;
-            if (paddata.BTN_SELECT) select = true;
-        }
-        if (select) break;
-        if (gameState == 1) {
-            if (snakes[0].alive) {
-                updatePlayer(snakes[0], dt, ax, ay, boost);
-            }
-            update(dt);
-        } else if (gameState == 2) {
-            updateFoods(dt);
-            updateParticles(dt);
-            for (int i = 1; i < MAX_SNAKES; i++) {
-                if (snakes[i].alive) updateBot(snakes[i], dt);
-            }
-            deathTimer -= dt;
-            bool xJust = xBtn && !xPressedLast;
-            if (xJust || deathTimer <= 0) {
-                resetPlayer();
-            }
-        }
-        xPressedLast = xBtn;
-        render();
-        frameCount++;
+void init_game() {
+    cobras.clear();
+    comidas.clear();
+    player.corpo.clear();
+    player.corpo.push_back({30, 20});
+    player.corpo.push_back({29, 20});
+    player.corpo.push_back({28, 20});
+    player.dir = 3;
+    player.speed = 6;
+    player.vivo = true;
+    player.isPlayer = true;
+    player.pontos = 0;
+    for (int i = 0; i < 8; i++) {
+        Snake b;
+        int sx = rand() % 50 + 5;
+        int sy = rand() % 30 + 5;
+        b.corpo.push_back({sx, sy});
+        b.corpo.push_back({sx-1, sy});
+        b.corpo.push_back({sx-2, sy});
+        b.dir = rand() % 4;
+        b.speed = 5;
+        b.vivo = true;
+        b.isPlayer = false;
+        b.pontos = 0;
+        cobras.push_back(b);
+    }
+    for (int i = 0; i < 30; i++) {
+        spawn_comida(rand() % LARGURA, rand() % ALTURA);
     }
 }
