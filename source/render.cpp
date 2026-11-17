@@ -2,21 +2,26 @@
 #include "game.h"
 #include <stdio.h>
 
-extern void draw_rect(int x, int y, int w, int h, int cor);
-extern void draw_text(int x, int y, const char* texto);
+void Game::draw_rect(int x, int y, int w, int h, int cor) {
+    (void)x; (void)y; (void)w; (void)h; (void)cor;
+}
 
-void render_game() {
+void Game::draw_text(int x, int y, const char* texto) {
+    (void)x; (void)y; (void)texto;
+}
+
+void Game::render_game() {
     draw_rect(0, 0, 1280, 720, 0xFF000000);
-    for (auto &f : comidas) {
-        draw_rect(f.x * 10, f.y * 10, 8, 8, 0xFFFF0000);
+    for (size_t i = 0; i < comidas.size(); i++) {
+        draw_rect(comidas[i].x * 10, comidas[i].y * 10, 8, 8, 0xFFFF0000);
     }
-    for (auto &p : player.corpo) {
-        draw_rect(p.x * 10, p.y * 10, 9, 9, 0xFF00FF00);
+    for (size_t i = 0; i < player.corpo.size(); i++) {
+        draw_rect(player.corpo[i].x * 10, player.corpo[i].y * 10, 9, 9, 0xFF00FF00);
     }
-    for (auto &b : cobras) {
-        if (!b.vivo) continue;
-        for (auto &p : b.corpo) {
-            draw_rect(p.x * 10, p.y * 10, 9, 9, 0xFFFFAA00);
+    for (size_t i = 0; i < cobras.size(); i++) {
+        if (!cobras[i].vivo) continue;
+        for (size_t j = 0; j < cobras[i].corpo.size(); j++) {
+            draw_rect(cobras[i].corpo[j].x * 10, cobras[i].corpo[j].y * 10, 9, 9, 0xFFFFAA00);
         }
     }
     char buf[64];
