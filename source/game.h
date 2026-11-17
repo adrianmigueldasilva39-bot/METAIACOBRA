@@ -42,6 +42,7 @@ struct Snake {
     bool isPlayer;
     bool alive;
     std::vector<Vec2> body;
+    std::vector<Vec2> path; // <-- ADICIONADO AQUI (era o que faltava)
     float angle;
     float targetAngle;
     float speed;
@@ -104,8 +105,7 @@ private:
     void killSnake(int index, int killerIndex);
     void addScore(Snake& s, int amount);
     
-    // Faltava declarar essa função aqui também (usada no spawn e no update)
-    void rebuildBodyFromPath(Snake& s);
+    void rebuildBodyFromPath(Snake& s); // <-- ADICIONADO AQUI
 
     void render();
     void renderGameOver();
