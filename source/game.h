@@ -7,9 +7,9 @@
 #include <cstdlib>
 #include <deque>
 
-#define WORLD_RADIUS 2000.0f // Mundo menor, combina com a foto
+#define WORLD_RADIUS 2500.0f
 #define MAX_SNAKES 15
-#define MAX_FOOD 500
+#define MAX_FOOD 600
 
 struct Vec2 {
     float x, y;
@@ -21,13 +21,14 @@ struct Food {
     Vec2 pos;
     float radius;
     Uint8 r, g, b;
+    float pulse;
     bool active;
 };
 
 struct Snake {
     bool isPlayer;
     bool alive;
-    std::deque<Vec2> body; // O segredo do movimento perfeito
+    std::deque<Vec2> body;
     float angle;
     float speed;
     float radius;
@@ -64,18 +65,16 @@ private:
     void updateBot(Snake& s, float dt);
     void checkCollisions();
 
-    // Funções de desenho (no render.cpp)
     void render();
-    void drawGrid();
+    void drawBackground();
     void drawBorder();
     void drawFood();
     void drawSnake(Snake& s);
     void drawMinimap();
     void drawHUD();
     
-    // Utilidades
     void drawFilledCircle(int cx, int cy, int radius, Uint8 r, Uint8 g, Uint8 b);
-    void drawRect(int x, int y, int w, int h, Uint8 r, Uint8 g, Uint8 b);
+    void drawGlowCircle(int cx, int cy, int radius, Uint8 r, Uint8 g, Uint8 b);
     void drawText(const char* text, int x, int y, Uint8 r, Uint8 g, Uint8 b, int scale);
     Vec2 worldToScreen(float wx, float wy);
     float dist(float x1, float y1, float x2, float y2);
