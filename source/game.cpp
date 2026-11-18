@@ -2,6 +2,7 @@
 #include <io/pad.h>
 #include <sysutil/sysutil.h>
 #include <cstdio>
+#include <ctime> // <--- ADICIONADO AQUI PARA O TIME() FUNCIONAR
 
 Game::Game() {
     screen = NULL;
@@ -215,8 +216,8 @@ void Game::run() {
             ioPadGetData(0, &paddata);
             ax = ((float)paddata.ANA_L_H - 128) / 128.0f;
             ay = ((float)paddata.ANA_L_V - 128) / 128.0f;
-            if (abs(ax) < 0.2f) ax = 0;
-            if (abs(ay) < 0.2f) ay = 0;
+            if (abs((int)(ax*100)) < 20) ax = 0; // Corrigido pra não usar abs float
+            if (abs((int)(ay*100)) < 20) ay = 0;
             if (paddata.BTN_CROSS || paddata.BTN_R1) boost = true;
             if (paddata.BTN_SELECT) select = true;
         }
