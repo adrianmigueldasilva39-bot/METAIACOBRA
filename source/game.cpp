@@ -14,15 +14,23 @@ Game::Game() {
 Game::~Game() {}
 
 bool Game::init() {
-    if (SDL_Init(SDL_INIT_VIDEO) < 0) return false;
+    if (SDL_Init(SDL_INIT_VIDEO) < 0) {
+        printf("ERRO: SDL_Init falhou!\n");
+        return false;
+    }
     
     ioPadInit(7);
     
-    screen = SDL_SetVideoMode(1280, 720, 32, SDL_SWSURFACE | SDL_FULLSCREEN);
-    if (!screen) return false;
+    // No PS3, as vezes 32 bits estoura a memoria. Vamos usar 16 bits (mais leve)
+    // e garantir que a flag é SWSURFACE.
+    screen = SDL_SetVideoMode(1280, 720, 16, SDL_SWSURFACE | SDL_FULLSCREEN);
+    if (!screen) {
+        printf("ERRO: SDL_SetVideoMode falhou!\n");
+        return false;
+    }
     
     SDL_ShowCursor(SDL_DISABLE);
-    srand(12345); // Número fixo, tira o erro do time()
+    srand(12345); 
     
     initWorld();
     running = true;
@@ -143,7 +151,7 @@ void Game::run() {
         sysUtilCheckCallback();
         ioPadGetInfo(&padinfo);
         
-        bool cross = false, start = false, select = false;
+        bool cross = false, select = false;
 
         if (padinfo.status[0]) {
             ioPadGetData(0, &paddata);
@@ -156,7 +164,6 @@ void Game::run() {
             }
 
             if (paddata.BTN_CROSS) cross = true;
-            if (paddata.BTN_START) start = true;
             if (paddata.BTN_SELECT) select = true;
         }
 
