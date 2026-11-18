@@ -8,8 +8,8 @@ Game::Game() {
     screen = NULL;
     running = false;
     gameState = 1;
-    cameraX = 0; cameraY = 0;
-    zoom = 0.8f; targetZoom = 0.8f;
+    score = 0;
+    record = 15; // Recorde inicial igual ao print
 }
 
 Game::~Game() {}
@@ -37,229 +37,153 @@ Uint32 Game::getColor(Uint8 r, Uint8 g, Uint8 b) {
     return SDL_MapRGB(screen->format, r, g, b);
 }
 
-float Game::dist(float x1, float y1, float x2, float y2) {
-    return sqrtf((x1-x2)*(x1-x2) + (y1-y2)*(y1-y2));
-}
-
-float Game::angleTo(float x1, float y1, float x2, float y2) {
-    return atan2f(y2 - y1, x2 - x1);
-}
-
-float Game::normalizeAngle(float a) {
-    while (a > 3.14159f) a -= 6.28318f;
-    while (a < -3.14159f) a += 6.28318f;
-    return a;
-}
-
 Vec2 Game::worldToScreen(float wx, float wy) {
-    return Vec2((wx - cameraX) * zoom + screen->w / 2, (wy - cameraY) * zoom + screen->h / 2);
+    // Centraliza o grid na tela e aplica um zoom para ficar 3D
+    float centerX = (GRID_SIZE * CELL_SIZE) / 2.0f;
+    float centerY = (GRID_SIZE * CELL_SIZE) / 2.0f;
+    
+    // Inclinação 3D fake (isométrico)
+    float isoX = (wx - wy) * 1.2f;
+    float isoY = (wx + wy) * 0.6f;
+    
+    float zoom = 1.2f;
+    return Vec2(
+        isoX * zoom + screen->w / 2,
+        isoY * zoom + screen->h / 2 + 100 // Joga um pouco pra baixo
+    );
+}
+
+void Game::spawnApple() {
+    bool valid = false;
+    while (!valid) {
+        apple.x = rand() % GRID_SIZE;
+        apple.y = rand() % GRID_SIZE;
+        valid = true;
+        // Não deixa a maçã nascer dentro do player
+        for (size_t i = 0; i < player.body.size(); i++) {
+            if (player.body[i] == apple) { valid = false; break; }
+        }
+    }
 }
 
 void Game::initWorld() {
-    for (int i = 0; i < MAX_FOOD; i++) spawnFood(i);
-    for (int i = 0; i < MAX_SNAKES; i++) {
-        float a = (float)i / MAX_SNAKES * 6.28318f;
-        spawnSnake(snakes[i], i == 0, cosf(a) * 1500.0f, sinf(a) * 1500.0f);
-        
-        // Cores estilo Slither.io
-        if (i == 0) {
-            snakes[i].r = 50; snakes[i].g = 255; snakes[i].b = 100; // Player verde
-        } else {
-            int c = rand()%4;
-            if(c==0){ snakes[i].r = 255; snakes[i].g = 50; snakes[i].b = 50; } // Vermelho
-            if(c==1){ snakes[i].r = 255; snakes[i].g = 255; snakes[i].b = 50; } // Amarelo
-            if(c==2){ snakes[i].r = 255; snakes[i].g = 50; snakes[i].b = 255; } // Rosa/Magenta
-            if(c==3){ snakes[i].r = 50; snakes[i].g = 150; snakes[i].b = 255; } // Azul
-        }
-    }
-    spawnSnake(snakes[0], true, 0, 0);
-    cameraX = 0; cameraY = 0;
-}
+    player.isPlayer = true;
+    player.alive = true;
+    player.body.clear();
+    player.body.push_back({10, 10});
+    player.body.push_back({10, 11});
+    player.body.push_back({10, 12});
+    player.dirX = 0; player.dirY = -1;
+    player.moveTimer = 0;
+    player.moveSpeed = 0.15f; // Segundos por movimento
 
-void Game::spawnSnake(Snake& s, bool isPlayer, float x, float y) {
-    s.isPlayer = isPlayer;
-    s.alive = true;
-    s.angle = (float)rand() / RAND_MAX * 6.28318f;
-    s.speed = isPlayer ? 220.0f : 180.0f;
-    s.radius = 12.0f;
-    s.score = 0;
-    s.length = 15;
-    s.aiTimer = 0;
-    s.aiTarget = Vec2(x, y);
-    
-    s.body.clear();
-    for (int i = 0; i < s.length; i++) {
-        s.body.push_back(Vec2(x - cosf(s.angle) * i * (s.radius * 0.4f), y - sinf(s.angle) * i * (s.radius * 0.4f)));
+    for (int i = 0; i < MAX_SNAKES-1; i++) {
+        bots[i].alive = false; // Desativado por enquanto para focar no Player
     }
-}
 
-void Game::spawnFood(int index) {
-    float a = (float)rand() / RAND_MAX * 6.28318f;
-    float d = (float)rand() / RAND_MAX * WORLD_RADIUS;
-    foods[index].pos = Vec2(cosf(a) * d, sinf(a) * d);
-    foods[index].radius = 6.0f;
-    
-    // Cores neon para a comida
-    static const Uint8 colors[6][3] = {
-        {255, 100, 100}, {100, 255, 100}, {100, 100, 255},
-        {255, 255, 100}, {255, 100, 255}, {100, 255, 255}
-    };
-    int c = rand() % 6;
-    foods[index].r = colors[c][0];
-    foods[index].g = colors[c][1];
-    foods[index].b = colors[c][2];
-    foods[index].pulse = (float)rand();
-    foods[index].active = true;
-}
-
-void Game::updatePlayer(Snake& s, float dt, float ax, float ay, bool boost) {
-    if (ax != 0 || ay != 0) {
-        float targetAngle = atan2f(ay, ax);
-        float diff = normalizeAngle(targetAngle - s.angle);
-        s.angle += diff * 4.5f * dt;
-    }
-    s.speed = boost ? 380.0f : 220.0f;
-}
-
-void Game::updateBot(Snake& s, float dt) {
-    if (s.body.empty()) return;
-    Vec2 head = s.body.front();
-    
-    s.aiTimer -= dt;
-    if (s.aiTimer <= 0) {
-        s.aiTimer = 0.5f;
-        float bestDist = 999999.0f;
-        for (int i = 0; i < MAX_FOOD; i++) {
-            if (!foods[i].active) continue;
-            float d = dist(head.x, head.y, foods[i].pos.x, foods[i].pos.y);
-            if (d < bestDist) {
-                bestDist = d;
-                s.aiTarget = foods[i].pos;
-            }
-        }
-    }
-    
-    float targetAngle = angleTo(head.x, head.y, s.aiTarget.x, s.aiTarget.y);
-    float diff = normalizeAngle(targetAngle - s.angle);
-    if (fabsf(fabsf(diff) - 3.14159f) < 0.2f) diff = 1.0f;
-    
-    s.angle += diff * 3.5f * dt;
-    s.speed = 180.0f;
+    score = 0;
+    spawnApple();
+    gameState = 1;
 }
 
 void Game::update(float dt) {
-    for (int i = 0; i < MAX_SNAKES; i++) {
-        if (!snakes[i].alive) continue;
-        
-        Vec2 head = snakes[i].body.front();
-        float nx = head.x + cosf(snakes[i].angle) * snakes[i].speed * dt;
-        float ny = head.y + sinf(snakes[i].angle) * snakes[i].speed * dt;
+    if (gameState != 1) return;
 
-        if (dist(nx, ny, 0, 0) > WORLD_RADIUS) {
-            if (snakes[i].isPlayer) { snakes[i].alive = false; gameState = 2; }
-            else { spawnSnake(snakes[i], false, 0, 0); }
-            continue;
+    updateSnake(player, dt, true);
+    checkCollisions();
+}
+
+void Game::updateSnake(Snake& s, float dt, bool isPlayer) {
+    if (!s.alive) return;
+
+    s.moveTimer += dt;
+    if (s.moveTimer >= s.moveSpeed) {
+        s.moveTimer = 0;
+
+        GridPos newHead = s.body.front();
+        newHead.x += s.dirX;
+        newHead.y += s.dirY;
+
+        // Bateu na parede (borda do mapa)?
+        if (newHead.x < 0 || newHead.x >= GRID_SIZE || newHead.y < 0 || newHead.y >= GRID_SIZE) {
+            s.alive = false;
+            if (isPlayer) gameState = 2;
+            return;
         }
 
-        snakes[i].body.push_front(Vec2(nx, ny));
-        
-        // O corpo encolhe se não comer (como no Slither.io ao dar boost)
-        while (snakes[i].body.size() > (size_t)snakes[i].length) {
-            snakes[i].body.pop_back();
-        }
-    }
-    
-    for (int i = 0; i < MAX_SNAKES; i++) {
-        if (!snakes[i].alive) continue;
-        Vec2 head = snakes[i].body.front();
-        for (int f = 0; f < MAX_FOOD; f++) {
-            if (!foods[f].active) continue;
-            if (dist(head.x, head.y, foods[f].pos.x, foods[f].pos.y) < snakes[i].radius + foods[f].radius) {
-                foods[f].active = false;
-                snakes[i].length += 1;
-                snakes[i].score += 10;
-                // Aumenta o raio da cabeça levemente conforme cresce (igual slither)
-                snakes[i].radius = 12.0f + (snakes[i].length * 0.05f);
-                spawnFood(f);
+        // Bateu no próprio corpo?
+        for (size_t i = 0; i < s.body.size() - 1; i++) {
+            if (s.body[i] == newHead) {
+                s.alive = false;
+                if (isPlayer) gameState = 2;
+                return;
             }
         }
-    }
-    
-    // Atualiza animação da comida
-    for (int i = 0; i < MAX_FOOD; i++) {
-        if (foods[i].active) foods[i].pulse += dt * 5.0f;
+
+        s.body.insert(s.body.begin(), newHead);
+
+        // Comeu a maçã?
+        if (newHead == apple) {
+            if (isPlayer) {
+                score++;
+                if (score > record) record = score;
+                spawnApple();
+            }
+        } else {
+            s.body.pop_back(); // Se não comeu, o rabo anda
+        }
     }
 }
 
 void Game::checkCollisions() {
-    for (int i = 0; i < MAX_SNAKES; i++) {
-        if (!snakes[i].alive) continue;
-        Vec2 head = snakes[i].body.front();
-        
-        for (int j = 0; j < MAX_SNAKES; j++) {
-            if (i == j || !snakes[j].alive) continue;
-            for (size_t k = 4; k < snakes[j].body.size(); k++) { // Pula o pescoço
-                if (dist(head.x, head.y, snakes[j].body[k].x, snakes[j].body[k].y) < snakes[i].radius * 0.8f) {
-                    if (snakes[i].isPlayer) { snakes[i].alive = false; gameState = 2; }
-                    else { spawnSnake(snakes[i], false, 0, 0); }
-                    break;
-                }
-            }
-        }
-    }
+    // Se o player morreu, o jogo já para no updateSnake
 }
 
 void Game::run() {
     padInfo padinfo;
     padData paddata;
     Uint32 lastTime = SDL_GetTicks();
-    
+    bool lastCross = false;
+
     while (running) {
         Uint32 now = SDL_GetTicks();
         float dt = (now - lastTime) / 1000.0f;
         lastTime = now;
-        if (dt > 0.05f) dt = 0.05f;
-        
+        if (dt > 0.1f) dt = 0.1f; // Evita saltos se travar
+
         sysUtilCheckCallback();
         ioPadGetInfo(&padinfo);
         
-        float ax = 0, ay = 0;
-        bool boost = false, select = false;
-        
+        bool cross = false, start = false, select = false;
+
         if (padinfo.status[0]) {
             ioPadGetData(0, &paddata);
-            ax = ((float)paddata.ANA_L_H - 128) / 128.0f;
-            ay = ((float)paddata.ANA_L_V - 128) / 128.0f;
-            if (abs((int)(ax*100)) < 20) ax = 0;
-            if (abs((int)(ay*100)) < 20) ay = 0;
-            if (paddata.BTN_CROSS || paddata.BTN_R1) boost = true;
+            
+            // Controles
+            if (gameState == 1) {
+                if (paddata.BTN_UP && player.dirY == 0) { player.dirX = 0; player.dirY = -1; }
+                if (paddata.BTN_DOWN && player.dirY == 0) { player.dirX = 0; player.dirY = 1; }
+                if (paddata.BTN_LEFT && player.dirX == 0) { player.dirX = -1; player.dirY = 0; }
+                if (paddata.BTN_RIGHT && player.dirX == 0) { player.dirX = 1; player.dirY = 0; }
+            }
+
+            if (paddata.BTN_CROSS) cross = true;
+            if (paddata.BTN_START) start = true;
             if (paddata.BTN_SELECT) select = true;
         }
-        
+
         if (select) break;
 
-        if (gameState == 1) {
-            if (snakes[0].alive) updatePlayer(snakes[0], dt, ax, ay, boost);
-            for (int i = 1; i < MAX_SNAKES; i++) if (snakes[i].alive) updateBot(snakes[i], dt);
-            
-            update(dt);
-            checkCollisions();
-            
-            if (snakes[0].alive) {
-                Vec2 head = snakes[0].body.front();
-                cameraX += (head.x - cameraX) * dt * 8.0f;
-                cameraY += (head.y - cameraY) * dt * 8.0f;
-                // Zoom out conforme a cobra cresce
-                targetZoom = 0.8f - (snakes[0].length * 0.002f);
-                if (targetZoom < 0.3f) targetZoom = 0.3f;
-                zoom += (targetZoom - zoom) * dt * 2.0f;
-            }
-        } else {
-            if (paddata.BTN_CROSS) {
+        // Game Over -> Aperta X pra reiniciar
+        if (gameState == 2) {
+            if (cross && !lastCross) {
                 initWorld();
-                gameState = 1;
-                zoom = 0.8f;
             }
+        }
+        lastCross = cross;
+
+        if (gameState == 1) {
+            update(dt);
         }
 
         render();
