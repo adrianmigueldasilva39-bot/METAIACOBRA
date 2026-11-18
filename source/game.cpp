@@ -1,9 +1,50 @@
 #include "game.h"
 #include <io/pad.h>
 #include <sysutil/sysutil.h>
-#include <audio/audio.h>
 #include <cstdio>
 #include <cstring>
+
+// --- INICIO DO SISTEMA DE AUDIO VIA SDL ---
+static void audioCallback(void* userdata, Uint8* stream, int len) {
+    (void)userdata;
+    // Se não estiver tocando nada, manda silêncio (0)
+    memset(stream, 0, len);
+}
+
+static float som_buffer[4096];
+static int som_pos = 0;
+static int som_tamanho = 0;
+
+// Função que gera o som de bolha na memória
+static void gerarSomBolha() {
+    som_tamanho = 2048; // Tamanho do som
+    som_pos = 0;
+    float phase = 0.0f;
+    for (int i = 0; i < som_tamanho; i++) {
+        float freq = 300.0f + (i * 1.5f); // Frequência subindo
+        phase += (freq * 2.0f * 3.14159f) / 44100.0f;
+        float envelope = 1.0f - ((float)i / som_tamanho); // Abafa o final
+        som_buffer[i] = sinf(phase) * envelope * 0.5f;
+    }
+}
+
+// Função do SDL que toca o áudio
+static void audioMixer(void* userdata, Uint8* stream, int len) {
+    (void)userdata;
+    int16_t* out = (int16_t*)stream;
+    int samples = len / 2;
+    
+    for (int i = 0; i < samples; i++) {
+        if (som_pos < som_tamanho) {
+            // Converte o float pra 16-bit e joga no alto-falante
+            out[i] = (int16_t)(som_buffer[som_pos] * 32767.0f);
+            som_pos++;
+        } else {
+            out[i] = 0; // Silêncio
+        }
+    }
+}
+// --- FIM DO SISTEMA DE AUDIO ---
 
 Game::Game()
     : screen(NULL), running(false), gameState(1), cameraX(0), cameraY(0),
@@ -13,9 +54,19 @@ Game::Game()
 Game::~Game() {}
 
 bool Game::init() {
-    if (SDL_Init(SDL_INIT_VIDEO) < 0) return false;
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0) return false;
     
-    cellAudioInit();
+    // Inicializa o áudio do SDL
+    SDL_AudioSpec want, have;
+    SDL_memset(&want, 0, sizeof(want));
+    want.freq = 44100;
+    want.format = AUDIO_S16SYS;
+    want.channels = 1;
+    want.samples = 1024;
+    want.callback = audioMixer;
+    SDL_OpenAudio(&want, &have);
+    SDL_PauseAudio(0); // Começa a tocar (mesmo que em silêncio)
+    
     ioPadInit(7);
     
     screen = SDL_SetVideoMode(1280, 720, 32, SDL_SWSURFACE | SDL_FULLSCREEN);
@@ -30,6 +81,7 @@ bool Game::init() {
 }
 
 void Game::shutdown() {
+    SDL_CloseAudio();
     ioPadEnd();
     SDL_Quit();
     screen = NULL;
@@ -209,22 +261,11 @@ void Game::addScore(Snake& s, int amount) {
 void Game::eatFood(Snake& s, int index) {
     addScore(s, foods[index].big ? 25 : 8);
     
-    // Toca o som APENAS se o jogador comer (para não virar uma orquestra de bots)
+    // Toca o som se for o jogador
     if (s.isPlayer) {
-        // Gera a onda procedural e manda pro PS3
-        static float audio_buffer[512];
-        static float phase = 0.0f;
-        for (int i = 0; i < 512; i++) {
-            // Frequência subindo rapidamente (som de bolha)
-            float freq = 300.0f + (i * 2.5f);
-            phase += (freq * 2.0f * 3.14159f) / 48000.0f;
-            float envelope = 1.0f - ((float)i / 512.0f); // Diminui o volume com o tempo
-            audio_buffer[i] = sinf(phase) * envelope * 0.5f; // Volume 50%
-        }
-        
-        // Envia pro buffer de áudio do PS3 (Canal 0)
-        float *buf = (float*)cellAudioGetPortAddress(0);
-        if (buf) memcpy(buf, audio_buffer, sizeof(audio_buffer));
+        SDL_LockAudio();
+        gerarSomBolha();
+        SDL_UnlockAudio();
     }
     
     spawnFood(index, false);
