@@ -1,21 +1,26 @@
 #include "game.h"
 #include <io/pad.h>
 #include <sysutil/sysutil.h>
+#include <audio/audio.h>
 #include <cstdio>
+#include <cstring>
 
 Game::Game()
     : screen(NULL), running(false), gameState(1), cameraX(0), cameraY(0),
       zoom(0.95f), targetZoom(0.95f), frameCount(0), deathTimer(0), xPressedLast(false) {
 }
 
-Game::~Game() {
-}
+Game::~Game() {}
 
 bool Game::init() {
     if (SDL_Init(SDL_INIT_VIDEO) < 0) return false;
+    
+    cellAudioInit();
     ioPadInit(7);
+    
     screen = SDL_SetVideoMode(1280, 720, 32, SDL_SWSURFACE | SDL_FULLSCREEN);
     if (!screen) return false;
+    
     SDL_ShowCursor(SDL_DISABLE);
     srand(12345);
     initWorld();
@@ -117,25 +122,14 @@ void Game::rebuildBodyFromPath(Snake& s) {
     s.body.clear();
     if (s.path.empty()) return;
     s.body.push_back(s.path[0]);
-    Vec2 last = s.path[0];
-    float acc = 0;
+    float acc = 0.0f;
     for (size_t i = 1; i < s.path.size() && (int)s.body.size() < (int)s.length; i++) {
-        float d = dist(last.x, last.y, s.path[i].x, s.path[i].y);
-        acc += d;
-        last = s.path[i];
+        acc += dist(s.path[i-1].x, s.path[i-1].y, s.path[i].x, s.path[i].y);
         if (acc >= spacing) {
             s.body.push_back(s.path[i]);
-            acc = 0;
+            acc = 0.0f;
         }
     }
-    float maxPathLen = spacing * (s.length + 20);
-    float total = 0;
-    size_t cut = s.path.size();
-    for (size_t i = 1; i < s.path.size(); i++) {
-        total += dist(s.path[i - 1].x, s.path[i - 1].y, s.path[i].x, s.path[i].y);
-        if (total > maxPathLen) { cut = i; break; }
-    }
-    if (cut < s.path.size()) s.path.erase(s.path.begin() + (int)cut, s.path.end());
 }
 
 void Game::spawnFood(int index, bool anywhere) {
@@ -214,7 +208,25 @@ void Game::addScore(Snake& s, int amount) {
 
 void Game::eatFood(Snake& s, int index) {
     addScore(s, foods[index].big ? 25 : 8);
-    // Aquele "efeito sabão" (spawnParticle) foi removido daqui!
+    
+    // Toca o som APENAS se o jogador comer (para não virar uma orquestra de bots)
+    if (s.isPlayer) {
+        // Gera a onda procedural e manda pro PS3
+        static float audio_buffer[512];
+        static float phase = 0.0f;
+        for (int i = 0; i < 512; i++) {
+            // Frequência subindo rapidamente (som de bolha)
+            float freq = 300.0f + (i * 2.5f);
+            phase += (freq * 2.0f * 3.14159f) / 48000.0f;
+            float envelope = 1.0f - ((float)i / 512.0f); // Diminui o volume com o tempo
+            audio_buffer[i] = sinf(phase) * envelope * 0.5f; // Volume 50%
+        }
+        
+        // Envia pro buffer de áudio do PS3 (Canal 0)
+        float *buf = (float*)cellAudioGetPortAddress(0);
+        if (buf) memcpy(buf, audio_buffer, sizeof(audio_buffer));
+    }
+    
     spawnFood(index, false);
 }
 
@@ -272,14 +284,12 @@ void Game::updateBot(Snake& s, float dt) {
     if (s.body.empty()) return;
     Vec2 head = s.body[0];
     
-    // A cada 0.5s o bot pensa onde ir
     s.aiTimer -= dt;
     if (s.aiTimer <= 0) {
         s.aiTimer = 0.5f;
         float bestDist = 1e9f;
         Vec2 bestFood = head;
         
-        // Acha a comida mais perto
         for (int i = 0; i < MAX_FOOD; i++) {
             if (!foods[i].active) continue;
             float dd = dist(head.x, head.y, foods[i].pos.x, foods[i].pos.y);
@@ -291,29 +301,24 @@ void Game::updateBot(Snake& s, float dt) {
         s.aiTarget = bestFood;
     }
 
-    // Anti-giro: Calcula o ângulo desejado
     float desired = angleTo(head.x, head.y, s.aiTarget.x, s.aiTarget.y);
     float diff = normalizeAngle(desired - s.angle);
 
-    // Se o alvo tiver exatamente atrás (-180 graus), vira para o lado pra não travar
+    // Anti-giro: Se o alvo estiver EXATAMENTE atrás, escolhe um lado aleatório pra virar
     if (fabsf(fabsf(diff) - 3.14159f) < 0.2f) {
         diff = (rand() % 2 == 0) ? 1.0f : -1.0f; 
     }
 
-    // Gira o corpo da cobra
     float turnSpeed = 4.5f;
     s.angle += diff * turnSpeed * dt;
     
-    // Normaliza o angulo entre -PI e PI
     while (s.angle > 3.14159f) s.angle -= 6.28318f;
     while (s.angle < -3.14159f) s.angle += 6.28318f;
 
-    // Move pra frente
-    s.speed = s.baseSpeed; // Bots não usam boost (evita bugar)
+    s.speed = s.baseSpeed;
     float nx = head.x + cosf(s.angle) * s.speed * dt;
     float ny = head.y + sinf(s.angle) * s.speed * dt;
     
-    // Se bater na parede, só vira pro centro
     if (!isInsideWorld(nx, ny)) {
         s.aiTarget = Vec2(0, 0);
         return;
@@ -380,16 +385,19 @@ void Game::run() {
     padInfo padinfo;
     padData paddata;
     Uint32 lastTime = SDL_GetTicks();
+    
     while (running) {
         Uint32 now = SDL_GetTicks();
         float dt = (now - lastTime) / 1000.0f;
         lastTime = now;
         if (dt > 0.05f) dt = 0.05f;
         if (dt < 0.0f) dt = 0.0f;
+        
         sysUtilCheckCallback();
         ioPadGetInfo(&padinfo);
         float ax = 0, ay = 0;
         bool boost = false, xBtn = false, select = false;
+        
         if (padinfo.status[0]) {
             ioPadGetData(0, &paddata);
             ax = ((float)paddata.ANA_L_H - 128) / 128.0f;
@@ -407,6 +415,7 @@ void Game::run() {
             if (paddata.BTN_SELECT) select = true;
         }
         if (select) break;
+        
         if (gameState == 1) {
             if (snakes[0].alive) updatePlayer(snakes[0], dt, ax, ay, boost);
             update(dt);
