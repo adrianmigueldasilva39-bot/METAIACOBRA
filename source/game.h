@@ -42,7 +42,7 @@ struct Snake {
     bool isPlayer;
     bool alive;
     std::vector<Vec2> body;
-    std::vector<Vec2> path; // <-- ADICIONADO AQUI (era o que faltava)
+    std::vector<Vec2> path; // Necessário para a física do rastro
     float angle;
     float targetAngle;
     float speed;
@@ -69,7 +69,7 @@ public:
     ~Game();
     bool init();
     void run();
-    void shutdown(); // <-- ADICIONADO AQUI
+    void shutdown(); // Necessário para o main.cpp
 
 private:
     SDL_Surface* screen;
@@ -105,7 +105,7 @@ private:
     void killSnake(int index, int killerIndex);
     void addScore(Snake& s, int amount);
     
-    void rebuildBodyFromPath(Snake& s); // <-- ADICIONADO AQUI
+    void rebuildBodyFromPath(Snake& s); // Necessário para a física
 
     void render();
     void renderGameOver();
